@@ -1,0 +1,5 @@
+Airlines/
+dist/
+__pycache__/
+*.msix
+*.zip

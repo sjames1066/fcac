@@ -1,0 +1,17 @@
+{
+  "simbrief_username": "YourSimBriefUsername",
+  "simbrief_userid": "",
+  "catalog_url": "https://raw.githubusercontent.com/YOUR-GITHUB-USER/YOUR-REPO/main/catalog.json",
+  "community_dir": "",
+  "airlines_dir": "",
+  "announcements_folder": "fnx-airline-packs",
+  "airline_override": "",
+  "auto_poll": true,
+  "poll_interval_seconds": 60,
+  "notifications": true,
+  "mappings": [
+    { "folder": "dep",  "base": "BoardingWelcome", "exclude_tags": ["Refueling"], "default_name": "BoardingWelcome" },
+    { "folder": "dest", "base": "AfterLanding", "default_name": "AfterLanding" },
+    { "folder": "fuel", "base": "BoardingWelcome", "require_tags": ["Refueling"], "default_name": "BoardingWelcome[Refueling]" }
+  ]
+}
