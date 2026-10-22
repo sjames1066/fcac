@@ -12,6 +12,7 @@ random token, and nothing here needs an extra package. The backend object (see f
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -61,11 +62,18 @@ class UIServer:
                 return self.headers.get("X-Token") or parse_qs(urlparse(self.path).query).get("t", [""])[0]
 
             def _send(self, code: int, body: bytes, mime: str = "application/json") -> None:
+                etag = None
+                if mime.startswith("image/"):  # revalidate every time, so a new logo.png shows up straight away
+                    etag = '"' + hashlib.md5(body).hexdigest() + '"'
+                    if self.headers.get("If-None-Match") == etag:
+                        code, body = 304, b""
                 self.send_response(code)
-                self.send_header("Content-Type", mime)
+                if code != 304:
+                    self.send_header("Content-Type", mime)
+                if etag:
+                    self.send_header("ETag", etag)
                 self.send_header("Content-Length", str(len(body)))
-                images = mime.startswith("image/")
-                self.send_header("Cache-Control", "private, max-age=300" if images else "no-store")
+                self.send_header("Cache-Control", "no-cache" if etag else "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 self.wfile.write(body)
@@ -276,7 +284,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
-  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="ver" style="margin-top:14px"></div></div>
+  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="ver" style="margin-top:14px"></div><div class="small" id="lib" style="margin-top:4px"></div></div>
 </div>
 
 <div class="modal" id="m-choice"><div class="dialog">
@@ -406,7 +414,7 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
-    $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
+    $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
     renderHero(); renderPacks(); renderPrompt();
     if(snap.setup_needed&&!setupShown){setupShown=true;openName()}
   }catch(e){}

@@ -940,6 +940,7 @@ class UIMixin:
         prompt = self.prompt
         return {
             "version": VERSION,
+            "library": str(airlines_root(cfg)),
             "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
             "username": cfg.get("simbrief_username", ""),
             "flight": state.get("flight"),
