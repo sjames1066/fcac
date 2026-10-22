@@ -292,22 +292,10 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
 
-  <div class="section-head" style="margin-top:30px"><h2>Airline aliases</h2><span>Use another airline's recordings, e.g. BA Shuttle (SHT) with the BAW pack</span></div>
-  <section class="card" id="aliases">
-    <div class="chips" id="alias-list"></div>
-    <div class="addrow">
-      <input type="text" id="a-alias" maxlength="3" placeholder="Airline" autocomplete="off" spellcheck="false">
-      <span class="small">uses</span>
-      <input type="text" id="a-source" maxlength="3" placeholder="Pack" list="a-sources" autocomplete="off" spellcheck="false">
-      <datalist id="a-sources"></datalist>
-      <button class="primary" id="a-add">Add alias</button>
-    </div>
-    <div class="small" style="margin-top:10px">Fenix only uses an airline pack when its folder matches the livery's airline code, so FCAC builds a pack folder for the alias from the other airline's files.</div>
-  </section>
-
   <footer>
     <button class="ghost" data-open="airlines">Your recordings</button>
     <button class="ghost" data-open="fenix">Fenix packs folder</button>
+    <button class="ghost" id="aliases-btn">Airline aliases</button>
     <button class="ghost" data-open="log">View log</button>
     <button class="ghost" id="settings">Settings</button>
     <button class="ghost" id="refresh">Refresh packs</button>
@@ -328,6 +316,21 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   <p>The name you log in to SimBrief with (not the numeric ID). FCAC reads your latest flight plan from it.</p>
   <input type="text" id="n-input" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false">
   <div class="row" style="margin-top:18px"><button class="ghost" id="n-cancel">Cancel</button><button class="primary" id="n-ok">Save</button></div>
+</div></div>
+
+<div class="modal" id="m-aliases"><div class="dialog" style="width:520px">
+  <h3>Airline aliases</h3>
+  <p>Use another airline's recordings, e.g. BA Shuttle (SHT) with the BAW pack.</p>
+  <div class="chips" id="alias-list"></div>
+  <div class="addrow">
+    <input type="text" id="a-alias" maxlength="3" placeholder="Airline" autocomplete="off" spellcheck="false">
+    <span class="small">uses</span>
+    <input type="text" id="a-source" maxlength="3" placeholder="Pack" list="a-sources" autocomplete="off" spellcheck="false">
+    <datalist id="a-sources"></datalist>
+    <button class="primary" id="a-add">Add alias</button>
+  </div>
+  <div class="small" style="margin:12px 0 18px">Fenix only uses an airline pack when its folder matches the livery's airline code, so FCAC builds a pack folder for the alias from the other airline's files.</div>
+  <div class="row"><button class="primary" id="a-done">Done</button></div>
 </div></div>
 
 <div class="modal" id="m-settings"><div class="dialog" style="width:500px">
@@ -454,6 +457,8 @@ function renderAliases(){
   });
   const dl=$("#a-sources"); dl.replaceChildren(); (snap.alias_sources||[]).forEach(v=>{const o=document.createElement("option");o.value=v;dl.append(o)});
 }
+$("#aliases-btn").onclick=()=>{$("#m-aliases").classList.add("show");setTimeout(()=>$("#a-alias").focus(),50)};
+$("#a-done").onclick=()=>$("#m-aliases").classList.remove("show");
 $("#a-add").onclick=async()=>{
   const a=$("#a-alias").value.trim(), s=$("#a-source").value.trim(); if(!a||!s){toast("Enter both airline codes");return}
   const r=await api("alias_add",{alias:a,source:s}); if(!r.error){$("#a-alias").value="";$("#a-source").value="";toast(a.toUpperCase()+" now uses "+s.toUpperCase()+" recordings")}
