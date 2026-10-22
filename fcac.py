@@ -88,6 +88,8 @@ DEFAULT_CONFIG = {
     "auto_poll": True,
     "poll_interval_seconds": 60,
     "notifications": True,
+    "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
     "mappings": [
         {"folder": "dep", "base": "BoardingWelcome", "exclude_tags": ["Refueling"], "default_name": "BoardingWelcome"},
@@ -142,6 +144,171 @@ def load_aliases(cfg: dict) -> dict[str, str]:
         raise AppError(f"aliases.json could not be read ({exc}) - it should look like {{\"SHT\": \"BAW\"}}.") from exc
     merged = {**(cfg.get("airline_aliases") or {}), **data}
     return {str(k).strip().upper(): str(v).strip().upper() for k, v in merged.items() if str(k).strip() and str(v).strip()}
+
+
+# --------------------------------------------------------------------------- starting with Windows / with MSFS
+EXE_XML_NAME = "FCAC"                       # name of our entry in MSFS's EXE.xml
+MSFS_PROCESS = "FlightSimulator2024.exe"
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def launch_command() -> tuple[str, str]:
+    """(program, arguments) that start this app: the .exe itself, or pythonw + fcac.py."""
+    if getattr(sys, "frozen", False):
+        return sys.executable, ""
+    exe = Path(sys.executable)
+    windowless = exe.with_name("pythonw.exe")
+    program = windowless if exe.name.lower() == "python.exe" and windowless.exists() else exe
+    return str(program), f'"{Path(__file__).resolve()}"'
+
+
+def msfs_config_dirs() -> list[Path]:
+    """Folders that hold MSFS 2024's EXE.xml (next to UserCfg.opt): Microsoft Store and/or Steam edition."""
+    found = []
+    local, roaming = os.environ.get("LOCALAPPDATA"), os.environ.get("APPDATA")
+    if local:
+        found.append(Path(local) / "Packages" / STORE_PACKAGE / "LocalCache")
+    if roaming:
+        found.append(Path(roaming) / "Microsoft Flight Simulator 2024")
+    return [p for p in found if p.is_dir()]
+
+
+def _xml_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+_ADDON_BLOCK = re.compile(r"[ \t]*<Launch\.Addon>.*?</Launch\.Addon>[ \t]*\r?\n?", re.DOTALL | re.IGNORECASE)
+_EXE_XML_NEW = (
+    '<?xml version="1.0" encoding="Windows-1252"?>\r\n<SimBase.Document Type="Launch" version="1,0">\r\n'
+    "\t<Descr>Launch</Descr>\r\n\t<Filename>EXE.xml</Filename>\r\n\t<Disabled>False</Disabled>\r\n"
+    "\t<Launch.ManualLoad>False</Launch.ManualLoad>\r\n</SimBase.Document>\r\n"
+)
+
+
+def _is_ours(block: str) -> bool:
+    return re.search(rf"<Name>\s*{EXE_XML_NAME}\s*</Name>", block, re.IGNORECASE) is not None
+
+
+def exe_xml_without_ours(text: str) -> str:
+    return _ADDON_BLOCK.sub(lambda m: "" if _is_ours(m.group(0)) else m.group(0), text)
+
+
+def exe_xml_with_ours(text: str, program: str, args: str) -> str:
+    """EXE.xml text with our <Launch.Addon> entry added (any older copy of it replaced). Other entries are kept."""
+    text = exe_xml_without_ours(text)
+    block = (
+        "\t<Launch.Addon>\r\n\t\t<Disabled>False</Disabled>\r\n\t\t<ManualLoad>False</ManualLoad>\r\n"
+        f"\t\t<Name>{EXE_XML_NAME}</Name>\r\n\t\t<Path>{_xml_escape(program)}</Path>\r\n"
+        + (f"\t\t<CommandLine>{_xml_escape(args)}</CommandLine>\r\n" if args else "")
+        + "\t\t<NewConsole>False</NewConsole>\r\n\t</Launch.Addon>\r\n"
+    )
+    close = re.search(r"[ \t]*</SimBase\.Document>", text, re.IGNORECASE)
+    if not close:
+        raise AppError("EXE.xml has an unexpected layout - FCAC left it alone.")
+    return text[: close.start()] + block + text[close.start():]
+
+
+def _read_exe_xml(path: Path) -> str:
+    return path.read_bytes().decode("cp1252", errors="replace") if path.exists() else ""
+
+
+def _write_exe_xml(path: Path, text: str) -> None:
+    if path.exists():  # keep a copy of what was there before we first touched it
+        BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, BACKUPS_DIR / f"EXE.xml.{time.strftime('%Y%m%d-%H%M%S')}.bak")
+    path.write_bytes(text.encode("cp1252", errors="xmlcharrefreplace"))
+
+
+def set_msfs_autostart(enabled: bool) -> list[Path]:
+    """Add or remove FCAC in MSFS's EXE.xml, so the sim starts it. Returns the files that were changed."""
+    dirs = msfs_config_dirs()
+    if enabled and not dirs:
+        raise AppError("Could not find MSFS 2024's settings folder (run the sim once, then try again).")
+    program, args = launch_command()
+    changed = []
+    for folder in dirs:
+        path = folder / "EXE.xml"
+        old = _read_exe_xml(path)
+        if enabled:
+            new = exe_xml_with_ours(old or _EXE_XML_NEW, program, args)
+        elif _is_ours(old):
+            new = exe_xml_without_ours(old)
+        else:
+            continue
+        if new != old:
+            try:
+                _write_exe_xml(path, new)
+            except OSError as exc:
+                raise AppError(f"Could not write {path}: {exc}") from exc
+            changed.append(path)
+    return changed
+
+
+def msfs_autostart_enabled() -> bool:
+    return any(_is_ours(_read_exe_xml(d / "EXE.xml")) for d in msfs_config_dirs())
+
+
+def set_windows_autostart(enabled: bool) -> None:
+    try:
+        import winreg
+    except ImportError as exc:
+        raise AppError("Starting with Windows only works on Windows.") from exc
+    program, args = launch_command()
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            if enabled:
+                winreg.SetValueEx(key, "FCAC", 0, winreg.REG_SZ, f'"{program}" {args}'.strip())
+            else:
+                try:
+                    winreg.DeleteValue(key, "FCAC")
+                except FileNotFoundError:
+                    pass
+    except OSError as exc:
+        raise AppError(f"Could not change the Windows startup entry: {exc}") from exc
+
+
+def windows_autostart_enabled() -> bool:
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            winreg.QueryValueEx(key, "FCAC")
+            return True
+    except (ImportError, OSError):
+        return False
+
+
+def current_autostart() -> str:
+    """What is actually set up right now: "msfs", "windows" or "off"."""
+    if msfs_autostart_enabled():
+        return "msfs"
+    return "windows" if windows_autostart_enabled() else "off"
+
+
+def apply_autostart(mode: str) -> str:
+    """Make `mode` ("off", "windows", "msfs") the only way FCAC starts by itself."""
+    if mode not in ("off", "windows", "msfs"):
+        raise AppError("Unknown startup option.")
+    if mode != "windows" and sys.platform.startswith("win"):
+        set_windows_autostart(False)
+    if mode != "msfs":
+        set_msfs_autostart(False)
+    if mode == "windows":
+        set_windows_autostart(True)
+    elif mode == "msfs":
+        set_msfs_autostart(True)
+    return mode
+
+
+def msfs_running() -> bool:
+    if not sys.platform.startswith("win"):
+        return False
+    try:
+        out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {MSFS_PROCESS}", "/NH", "/FO", "CSV"], capture_output=True,
+                             text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        return MSFS_PROCESS.lower() in out.lower()
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def save_aliases(aliases: dict[str, str]) -> None:
@@ -954,6 +1121,12 @@ class UIMixin:
             pass
         return {
             "version": VERSION,
+            "settings": {
+                "on_close": cfg.get("on_close", "tray"),
+                "autostart": current_autostart(),
+                "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
+                "windows": sys.platform.startswith("win"),
+            },
             "aliases": aliases,
             "alias_sources": sorted(set(sources)),
             "library": str(airlines_root(cfg)),
@@ -980,6 +1153,24 @@ class UIMixin:
         from fcac_icon import make_icon
 
         return _png_bytes(make_icon(128))
+
+    def window_closed(self) -> None:
+        """If 'quit when I close the window' is on, quit after a short grace period (a page reload is not a close)."""
+        try:
+            if load_config().get("on_close") != "quit":
+                return
+        except AppError:
+            return
+        closed_at = time.monotonic()
+
+        def later() -> None:
+            time.sleep(4)
+            if self.ui.last_poll > closed_at or self.tasks or self.lock.locked():
+                return  # the window came back, or something is installing
+            log.info("Window closed - quitting as chosen in Settings")
+            self.quit()
+
+        threading.Thread(target=later, daemon=True).start()
 
     # things the page can ask for
     def ui_action(self, name: str, data: dict) -> dict:
@@ -1036,6 +1227,21 @@ class UIMixin:
             save_state(state)
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
+        elif name == "settings":
+            on_close = data.get("on_close")
+            mode = data.get("autostart")
+            if on_close not in ("tray", "quit") or mode not in ("off", "windows", "msfs"):
+                return {"error": "Unknown setting."}
+            try:
+                if mode != current_autostart():
+                    apply_autostart(mode)
+                set_config_value("on_close", on_close)
+                set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
+            except (AppError, OSError) as exc:
+                return {"error": str(exc)}
+            self.set_status("Settings saved")
+        elif name == "closing":  # the window was closed: quit if that is what the user chose
+            self.window_closed()
         elif name == "refresh":
             self.refresh_catalog()
         elif name == "forget":
@@ -1248,6 +1454,25 @@ class TrayApp(UIMixin):
         except AppError as exc:
             self.set_status(str(exc), notify=True)
 
+    def msfs_watch(self) -> None:
+        """Started by MSFS (Settings): close FCAC after the sim has been running and then closes."""
+        seen, missing = False, 0
+        while not self.stop.wait(10):
+            try:
+                if not (load_config().get("quit_with_msfs", True) and msfs_autostart_enabled()):
+                    seen, missing = False, 0
+                    continue
+                if msfs_running():
+                    seen, missing = True, 0
+                elif seen:
+                    missing += 1
+                    if missing >= 2 and not (self.tasks or self.lock.locked()):
+                        log.info("MSFS closed - quitting FCAC")
+                        self.quit()
+                        return
+            except Exception:
+                log.exception("MSFS watcher error")
+
     def toggle_auto(self) -> None:
         self.auto = not self.auto
         self.wake.set()
@@ -1364,6 +1589,7 @@ class TrayApp(UIMixin):
         if needs_name:
             self.open_window()  # the window asks for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
+        threading.Thread(target=self.msfs_watch, daemon=True).start()
         self.icon.run()
 
 

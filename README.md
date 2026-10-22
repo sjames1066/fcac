@@ -85,6 +85,15 @@ It is a small page served only to your own PC (127.0.0.1, protected by a random 
 Edge or Chrome window, so there is nothing extra to install. The typeface is [Inter](https://rsms.me/inter/)
 (SIL Open Font License 1.1), built in so it looks the same offline.
 
+**Settings** (button at the bottom of the window):
+- **When I close this window:** keep FCAC running in the tray (default), or quit it completely.
+- **Start FCAC automatically:** no, **with MSFS**, or with Windows. "With MSFS" adds FCAC to MSFS 2024's `EXE.xml`
+  (next to `UserCfg.opt`, for the Microsoft Store and Steam editions) so the sim launches it; your other entries
+  there are left alone, a backup of the file is saved in `%LOCALAPPDATA%\FCAC\backups`, and choosing "No" removes
+  FCAC's entry again. With that option you can also tick **Close FCAC when MSFS closes**. If the sim doesn't start
+  FCAC, run MSFS as administrator the same way your other add-ons need (the usual EXE.xml requirement).
+- Your SimBrief username.
+
 **Logos.** FCAC doesn't ship airline logos. The pack list shows, in this order: a `logo.png` you put in
 `Airlines\<ICAO>\` yourself, the logo the pack publisher links in the catalog (see `--logo-url` below), or a coloured
 tile with the airline's ICAO code.

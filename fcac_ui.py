@@ -19,6 +19,7 @@ import os
 import secrets
 import subprocess
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,6 +43,7 @@ class UIServer:
         self.token = secrets.token_hex(16)
         self.httpd: ThreadingHTTPServer | None = None
         self.window: subprocess.Popen | None = None
+        self.last_poll = 0.0
         self._lock = threading.Lock()
 
     # server -------------------------------------------------------------
@@ -95,6 +97,7 @@ class UIServer:
                     if path == "/":
                         self._send(200, server.page().encode("utf-8"), "text/html; charset=utf-8")
                     elif path == "/api/state":
+                        server.last_poll = time.monotonic()
                         self._json(200, server.backend.ui_snapshot())
                     elif path.startswith("/logo/"):
                         data, mime = server.backend.ui_logo(path[6:].split(".")[0].upper())
@@ -252,6 +255,13 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .chip2 button:hover{background:rgba(255,107,129,.18);color:var(--err)}
 .addrow{display:flex;align-items:center;gap:10px}
 .addrow input{width:96px;text-transform:uppercase;text-align:center;letter-spacing:.06em;font-weight:600}
+.setting{margin-bottom:18px}
+.setting .label{margin-bottom:8px}
+.radios{display:grid;gap:8px}
+.radio{padding:11px 14px;border-radius:12px;border:1px solid var(--line2);background:var(--surface2);cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.radio b{font-weight:600}
+.radio span{color:var(--muted);font-size:12.5px}
+.radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
 .modal.show{display:flex}
 .dialog{background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
@@ -299,7 +309,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" data-open="airlines">Your recordings</button>
     <button class="ghost" data-open="fenix">Fenix packs folder</button>
     <button class="ghost" data-open="log">View log</button>
-    <button class="ghost" id="settings">SimBrief username</button>
+    <button class="ghost" id="settings">Settings</button>
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
@@ -318,6 +328,26 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   <p>The name you log in to SimBrief with (not the numeric ID). FCAC reads your latest flight plan from it.</p>
   <input type="text" id="n-input" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false">
   <div class="row" style="margin-top:18px"><button class="ghost" id="n-cancel">Cancel</button><button class="primary" id="n-ok">Save</button></div>
+</div></div>
+
+<div class="modal" id="m-settings"><div class="dialog" style="width:500px">
+  <h3>Settings</h3><p>How FCAC behaves. Changes apply when you press Save.</p>
+  <div class="setting"><div class="label">SimBrief username</div>
+    <input type="text" id="s-name" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false"></div>
+  <div class="setting"><div class="label">When I close this window</div>
+    <div class="radios" id="s-close">
+      <div class="radio" data-v="tray"><b>Keep running in the tray</b><span>FCAC keeps your announcements up to date in the background</span></div>
+      <div class="radio" data-v="quit"><b>Quit FCAC</b><span>Closing the window exits the app completely</span></div>
+    </div></div>
+  <div class="setting"><div class="label">Start FCAC automatically</div>
+    <div class="radios" id="s-start">
+      <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
+      <div class="radio" data-v="msfs"><b>With MSFS</b><span>The sim launches FCAC every time it starts (through its EXE.xml)</span></div>
+      <div class="radio" data-v="windows"><b>With Windows</b><span>Starts when you sign in to your PC</span></div>
+    </div>
+    <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close FCAC when MSFS closes</label>
+  </div>
+  <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -438,7 +468,26 @@ function renderPrompt(){
 $("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
-$("#settings").onclick=openName;
+let cfg={on_close:"tray",autostart:"off"};
+function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
+document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
+  cfg[g.id==="s-close"?"on_close":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+function openSettings(){
+  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off"};
+  $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
+  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart);
+  $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
+  $("#m-settings").classList.add("show");
+}
+$("#settings").onclick=openSettings;
+$("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
+$("#s-save").onclick=async()=>{
+  const name=$("#s-name").value.trim();
+  if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
+  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,quit_with_msfs:$("#s-quit").checked});
+  if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
+};
+window.addEventListener("pagehide",()=>{try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
 $("#n-cancel").onclick=()=>$("#m-name").classList.remove("show");
 $("#n-ok").onclick=async()=>{const v=$("#n-input").value.trim(); if(!v)return; $("#m-name").classList.remove("show"); await api("username",{name:v}); toast("Saved - fetching your flight")};
 $("#n-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#n-ok").click()});
