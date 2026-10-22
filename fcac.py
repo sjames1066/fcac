@@ -67,6 +67,7 @@ for _d in (DATA_DIR, GENERIC_DIR, BACKUPS_DIR):
 SIMBRIEF_URL = "https://www.simbrief.com/api/xml.fetcher.php"
 STORE_PACKAGE = "Microsoft.Limitless_8wekyb3d8bbwe"   # MSFS 2024, Microsoft Store / Xbox app
 STEAM_APPID = "2537590"                               # MSFS 2024 on Steam
+KOFI_URL = "https://ko-fi.com/sjames1066"
 MAIN_FOLDER = "main"                                  # Airlines\<ICAO>\main: the airline's general PAs (SafetyBriefing...)
 ZIP_FOLDERS = (MAIN_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
@@ -980,6 +981,11 @@ class UIMixin:
                 target = airline_packs_dir(cfg)
             elif what == "log":
                 open_path(LOG_PATH)
+                return
+            elif what == "kofi":
+                import webbrowser
+
+                webbrowser.open(KOFI_URL)
                 return
             else:
                 return

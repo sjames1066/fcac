@@ -55,6 +55,8 @@ also put the generic files yourself in `Airlines\BAW\main`.
 FCAC only edits a Fenix pack that already exists. If an airline has no pack in the Fenix folder it tells you and
 creates your recordings folders, but never creates an empty pack (Fenix would use it instead of its default one).
 
+Enjoying FCAC? [Buy me a Ko-fi](https://ko-fi.com/sjames1066) - there's a button for it at the bottom of the window too.
+
 ## Setup
 
 1. Install Python 3.10+ for Windows, then in this folder: `pip install -r requirements.txt`

@@ -232,6 +232,10 @@ input[type=text]:focus{border-color:var(--magenta)}
 .err{color:var(--err);font-size:12.5px}
 .empty{color:var(--muted);padding:26px;text-align:center;border:1px dashed var(--line2);border-radius:16px}
 footer{margin-top:28px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:var(--faint);font-size:12.5px}
+button.kofi{margin-left:6px;background:rgba(255,146,24,.12);border-color:rgba(255,146,24,.45);color:#ffb454!important;font-weight:600!important}
+button.kofi span{color:#ff6b81;margin-right:4px}
+button.kofi:hover{background:rgba(255,146,24,.22)}
+  .support{margin-top:30px;text-align:center;color:var(--faint);font-size:12.5px}
 footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--muted)}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
 .modal.show{display:flex}
@@ -271,6 +275,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
+  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
 </div>
 
 <div class="modal" id="m-choice"><div class="dialog">
