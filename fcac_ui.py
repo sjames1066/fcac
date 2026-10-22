@@ -272,6 +272,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" data-open="fenix">Fenix packs folder</button>
     <button class="ghost" data-open="log">View log</button>
     <button class="ghost" id="settings">SimBrief username</button>
+    <button class="ghost" data-open="aliases">Airline aliases</button>
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>

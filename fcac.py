@@ -45,6 +45,8 @@ BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
 CONFIG_PATH = Path(os.environ.get("FCAC_CONFIG", BASE_DIR / "config.json"))
+ALIASES_PATH = CONFIG_PATH.with_name("aliases.json")
+DEFAULT_ALIASES = {"SHT": "BAW", "CFE": "BAW", "EFW": "BAW"}  # BA Shuttle, BA CityFlyer, BA EuroFlyer -> the BAW pack
 
 
 def _data_dir() -> Path:
@@ -80,9 +82,8 @@ DEFAULT_CONFIG = {
     "airlines_dir": "",               # your recordings library; empty = an 'Airlines' folder next to the app
     "announcements_folder": "fnx-airline-packs",
     "airline_override": "",           # force an airline ICAO instead of using the SimBrief plan
-    # Airlines that share another airline's recordings, e.g. BA Shuttle (SHT) flies with the BAW pack:
-    # {"SHT": "BAW"} puts the BAW announcements in the Fenix pack folder named SHT.
-    "airline_aliases": {"SHT": "BAW"},
+    # Airlines that share another airline's recordings. Edit aliases.json (next to the app) instead of this.
+    "airline_aliases": {},
     "auto_poll": True,
     "poll_interval_seconds": 60,
     "notifications": True,
@@ -122,6 +123,24 @@ def set_config_value(key: str, value) -> None:
         raise AppError(f"config.json could not be read: {exc}") from exc
     data[key] = value
     CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def load_aliases(cfg: dict) -> dict[str, str]:
+    """Airlines that use another airline's recordings, e.g. {"SHT": "BAW"}: a flight with airline SHT uses
+    Airlines\\BAW and fills the Fenix pack folder named SHT. Edit aliases.json next to the app (created on first run)."""
+    if not ALIASES_PATH.exists():
+        try:
+            ALIASES_PATH.write_text(json.dumps(DEFAULT_ALIASES, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            log.warning("Could not create %s", ALIASES_PATH)
+    try:
+        data = json.loads(ALIASES_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("not an object")
+    except (OSError, ValueError) as exc:
+        raise AppError(f"aliases.json could not be read ({exc}) - it should look like {{\"SHT\": \"BAW\"}}.") from exc
+    merged = {**(cfg.get("airline_aliases") or {}), **data}
+    return {str(k).strip().upper(): str(v).strip().upper() for k, v in merged.items() if str(k).strip() and str(v).strip()}
 
 
 def load_state() -> dict:
@@ -624,7 +643,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
     airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
-    aliases = {str(k).strip().upper(): str(v).strip().upper() for k, v in (cfg.get("airline_aliases") or {}).items()}
+    aliases = load_aliases(cfg)
     source = check_airline_code(aliases.get(airline, airline))  # whose recordings to use, e.g. BAW
     lib_dir, created = ensure_airline_folders(cfg, source)
     fenix_dir = airline_packs_dir(cfg) / airline
@@ -856,7 +875,10 @@ def logo_png(cfg: dict, icao: str) -> bytes:
     """Logo for an airline: your own Airlines/<ICAO>/logo.png, else the pack's logo, else a monogram tile."""
     from PIL import Image
 
-    icao = {str(k).strip().upper(): str(v).strip().upper() for k, v in (cfg.get("airline_aliases") or {}).items()}.get(icao, icao)
+    try:
+        icao = load_aliases(cfg).get(icao, icao)
+    except AppError:
+        pass
     try:
         folder = airline_folder(cfg, icao)
         for name in ("logo.png", "logo.jpg", "logo.jpeg", "logo.webp"):
@@ -990,6 +1012,10 @@ class UIMixin:
                 target = airline_packs_dir(cfg)
             elif what == "log":
                 open_path(LOG_PATH)
+                return
+            elif what == "aliases":
+                load_aliases(cfg)  # creates the file if it isn't there yet
+                open_path(ALIASES_PATH)
                 return
             elif what == "kofi":
                 import webbrowser
