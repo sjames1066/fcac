@@ -344,7 +344,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 <div class="modal" id="m-name"><div class="dialog">
   <h3>SimBrief username</h3>
   <p>The name you log in to SimBrief with (not the numeric ID). FCAC reads your latest flight plan from it.</p>
-  <input type="text" id="n-input" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false">
+  <input type="text" id="n-input" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false">
   <div class="row" style="margin-top:18px"><button class="ghost" id="n-cancel">Cancel</button><button class="primary" id="n-ok">Save</button></div>
 </div>
 </div>
@@ -379,7 +379,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 <div class="modal" id="m-settings"><div class="dialog" style="width:500px">
   <h3>Settings</h3><p>How FCAC behaves. Changes apply when you press Save.</p>
   <div class="setting"><div class="label">SimBrief username</div>
-    <input type="text" id="s-name" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false"></div>
+    <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
   <div class="setting"><div class="label">When I close this window</div>
     <div class="radios" id="s-close">
       <div class="radio" data-v="tray"><b>Keep running in the tray</b><span>FCAC keeps your announcements up to date in the background</span></div>
