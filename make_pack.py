@@ -29,7 +29,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-CLIP_NAME = re.compile(r"^(?P<airline>[A-Z0-9]{3})_(?P<dest>[A-Z0-9]{4})\.ogg$", re.IGNORECASE)
+CLIP_NAME = re.compile(r"^(?P<airline>[A-Z0-9]{3})_(?P<dest>[A-Z0-9]{4})(?:_[A-Z0-9]+)?\.ogg$", re.IGNORECASE)
 
 
 def add_folder(archive: zipfile.ZipFile, folder: Path, prefix: str, airline: str | None) -> int:
@@ -40,7 +40,7 @@ def add_folder(archive: zipfile.ZipFile, folder: Path, prefix: str, airline: str
         if airline is not None:
             match = CLIP_NAME.match(path.name)
             if not match or match["airline"].upper() != airline or path.parent != folder:
-                print(f"  skipped {path.relative_to(folder)} (expected {airline}_<ICAO>.ogg)")
+                print(f"  skipped {path.relative_to(folder)} (expected {airline}_<ICAO>.ogg or {airline}_<ICAO>_<VARIANT>.ogg)")
                 continue
         archive.write(path, f"{prefix}/{path.relative_to(folder).as_posix()}")
         count += 1

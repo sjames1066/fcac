@@ -534,7 +534,102 @@ def generic_source(cfg: dict, airline: str, fenix_dir: Path) -> Path | None:
     return snapshot if has_ogg(snapshot) else None
 
 
-def apply_destination(cfg: dict, airline: str, dest_icao: str) -> str:
+STANDARD = "Standard"  # label for the plain <AIRLINE>_<ICAO>.ogg recording (no terminal/variant suffix)
+
+
+def find_clips(lib_dir: Path, folder: str, airline: str, dest_icao: str) -> dict[str, Path]:
+    """Recordings for a destination in one folder, keyed by variant label (upper case; "" = the plain file).
+    BAW_EGLL.ogg -> "",  BAW_EGLL_T5.ogg -> "T5",  BAW_EGLL_Gen.ogg -> "GEN". Matching ignores case."""
+    pattern = re.compile(rf"{re.escape(airline)}_{re.escape(dest_icao)}(?:_([A-Z0-9]+))?\.ogg", re.IGNORECASE)
+    clips: dict[str, Path] = {}
+    folder_path = lib_dir / folder
+    if folder_path.is_dir():
+        for path in sorted(folder_path.iterdir()):
+            match = pattern.fullmatch(path.name)
+            if match and path.is_file():
+                clips[(match.group(1) or "").upper()] = path
+    return clips
+
+
+def variant_options(all_clips: dict[str, dict[str, Path]]) -> list[str]:
+    """Every variant label offered for a destination across dep/dest/fuel, plain first then alphabetical."""
+    return sorted({label for clips in all_clips.values() for label in clips}, key=lambda label: (label != "", label))
+
+
+def variant_name(label: str) -> str:
+    return label or STANDARD
+
+
+def choose_gui(title: str, prompt: str, options: list[str]) -> tuple[str, bool]:
+    """Ask which option to use. Runs the dialog in a separate process so Tk never fights the tray icon's loop.
+    Returns (chosen option, remember). Closing the window picks the first option."""
+    cmd = ([sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())])
+    cmd += ["--pick", title, prompt, *options]
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=flags).stdout
+        data = json.loads(out.strip().splitlines()[-1])
+        if data["choice"] in options:
+            return data["choice"], bool(data.get("remember"))
+    except (OSError, ValueError, KeyError, IndexError, subprocess.TimeoutExpired):
+        log.exception("Choice dialog failed")
+    return options[0], False
+
+
+def run_pick_dialog(title: str, prompt: str, options: list[str]) -> int:
+    """Small Tk window: radio buttons + 'remember'. Prints {"choice":..., "remember":...} as JSON."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    root = tk.Tk()
+    root.title(APP_NAME)
+    root.resizable(False, False)
+    result = {"choice": options[0], "remember": False}
+    picked, remember = tk.StringVar(value=options[0]), tk.BooleanVar(value=False)
+    frame = ttk.Frame(root, padding=16)
+    frame.pack()
+    ttk.Label(frame, text=title, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+    ttk.Label(frame, text=prompt, wraplength=340).pack(anchor="w", pady=(4, 10))
+    for option in options:
+        ttk.Radiobutton(frame, text=option, value=option, variable=picked).pack(anchor="w", pady=1)
+    ttk.Checkbutton(frame, text="Remember my choice for this airport", variable=remember).pack(anchor="w", pady=(10, 8))
+
+    def done() -> None:
+        result.update(choice=picked.get(), remember=remember.get())
+        root.destroy()
+
+    ttk.Button(frame, text="Use this one", command=done).pack(anchor="e")
+    root.protocol("WM_DELETE_WINDOW", root.destroy)  # closing = the first option, not remembered
+    root.attributes("-topmost", True)
+    root.mainloop()
+    print(json.dumps(result))
+    return 0
+
+
+def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> str:
+    """Return the variant label to use: a remembered choice, or the user's answer to a prompt."""
+    key = f"{airline}_{dest_icao}"
+    state = load_state()
+    remembered = state.get("choices", {}).get(key)
+    if remembered is not None and remembered in options:
+        return remembered
+    names = {variant_name(label): label for label in options}
+    answer, remember = choose(
+        f"{airline} to {dest_icao}",
+        f"There is more than one recording for {dest_icao}. Which would you like?",
+        list(names),
+    )
+    label = names.get(answer, options[0])
+    if remember:
+        state = load_state()
+        state.setdefault("choices", {})[key] = label
+        save_state(state)
+    return label
+
+
+def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None) -> str:
+    """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
+    (`variant` skips the question)."""
     airline = check_airline_code(airline)
     lib_dir, created = ensure_airline_folders(cfg, airline)
     fenix_dir = airline_packs_dir(cfg) / airline
@@ -564,27 +659,41 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str) -> str:
                     install_file(path, dst)
                     synced += 1
 
+    all_clips = {m["folder"]: find_clips(lib_dir, m["folder"], airline, dest_icao) for m in cfg["mappings"]}
+    options = variant_options(all_clips)
+    chosen = ""
+    if variant is not None:
+        chosen = variant.upper().strip()
+        if chosen == STANDARD.upper():
+            chosen = ""
+    elif len(options) == 1:
+        chosen = options[0]
+    elif len(options) > 1:
+        chosen = pick_variant(airline, dest_icao, options, choose or choose_gui)
+
     summary, custom = [], 0
     for mapping in cfg["mappings"]:
-        clip = lib_dir / mapping["folder"] / f"{airline}_{dest_icao}.ogg"
+        clips = all_clips[mapping["folder"]]
+        clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
         for name in target_names(pristine, mapping):
             dst, generic = fenix_dir / name, (pristine / name if pristine else None)
-            if clip.is_file():
+            if clip:
                 install_file(clip, dst)
             elif generic and generic.is_file():
                 install_file(generic, dst)  # no recording for this airport: back to the pack's generic file
             else:
                 dst.unlink(missing_ok=True)
-        custom += clip.is_file()
-        summary.append(f"{mapping['folder']}: {'custom' if clip.is_file() else 'generic'}")
+        custom += bool(clip)
+        summary.append(f"{mapping['folder']}: {'custom' if clip else 'generic'}")
 
-    message = f"{airline} to {dest_icao} ({', '.join(summary)})"
+    shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
+    message = f"{airline} to {shown} ({', '.join(summary)})"
     if synced:
         message += f" - updated {synced} general PA file(s) from main"
     if created:
         message += f" - created {lib_dir}, add your recordings there"
     elif not custom:
-        message += f" - no recordings named {airline}_{dest_icao}.ogg yet"
+        message += f" - no recordings for {airline}_{dest_icao} yet"
     return message
 
 
@@ -605,7 +714,8 @@ def restore_generic(cfg: dict, icao: str) -> str:
     return f"Restored the original {icao} announcements"
 
 
-def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None) -> tuple[bool, str]:
+def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
+           variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
     flight = {"icao": dest.upper(), "airline": ""} if dest else fetch_flight(cfg)
     code = (airline or cfg.get("airline_override") or flight["airline"] or "").strip().upper()
@@ -618,7 +728,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     state = load_state()
     if not force and state.get("last") == key:
         return False, f"Unchanged: {code} to {flight['icao']}"
-    message = apply_destination(cfg, code, flight["icao"])
+    message = apply_destination(cfg, code, flight["icao"], variant=variant)
     state = load_state()
     state["last"] = key
     state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -672,6 +782,7 @@ class TrayApp:
             item("Uninstall airline pack", menu(self.uninstall_items)),
             item("Refresh pack list", lambda: self.refresh_catalog(notify=True)),
             item("Restore original announcements", menu(self.restore_items)),
+            item("Forget remembered terminal choices", self.forget_choices),
             menu.SEPARATOR,
             item("Open Airlines folder (your recordings)", self.open_airlines_folder),
             item("Open Fenix airline packs folder", self.open_packs_folder),
@@ -704,6 +815,14 @@ class TrayApp:
             for icao, rec in sorted(installed.items())
         ]
         return rows or [item("No packs installed", None, enabled=False)]
+
+    def forget_choices(self) -> None:
+        state = load_state()
+        count = len(state.pop("choices", {}))
+        state.pop("last", None)  # so the next update asks again
+        save_state(state)
+        self.set_status(f"Forgot {count} remembered choice(s)", notify=True)
+        self.wake.set()
 
     def restore_items(self):
         """Airlines FCAC has saved original announcements for (or that have a 'main' folder of their own)."""
@@ -876,8 +995,12 @@ def main() -> int:
     parser.add_argument("--restore", metavar="ICAO", help="put an airline's original generic announcements back")
     parser.add_argument("--once", action="store_true", help="update once and exit (no tray icon)")
     parser.add_argument("--airline", help="with --once: airline ICAO instead of the SimBrief plan's")
+    parser.add_argument("--variant", help="with --once: which recording to use when a destination has several (e.g. T5, or Standard)")
+    parser.add_argument("--pick", nargs="+", help=argparse.SUPPRESS)  # internal: choice dialog
     parser.add_argument("--dest", help="with --once: destination ICAO instead of asking SimBrief")
     args = parser.parse_args()
+    if args.pick:
+        return run_pick_dialog(args.pick[0], args.pick[1], args.pick[2:])
 
     logging.basicConfig(
         level=logging.INFO,
@@ -913,7 +1036,7 @@ def main() -> int:
         if args.restore:
             print(restore_generic(cfg, args.restore))
         if args.once:
-            print(update(cfg, force=True, airline=args.airline, dest=args.dest)[1])
+            print(update(cfg, force=True, airline=args.airline, dest=args.dest, variant=args.variant)[1])
         return 0
     except AppError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

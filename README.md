@@ -28,6 +28,13 @@ C:\FCAC\
 
 Name each recording `<AIRLINE>_<destination ICAO>.ogg`. The destination is the ICAO code of where the flight is going.
 
+**Several options for one airport?** Add a suffix: `BAW_EGLL.ogg`, `BAW_EGLL_T5.ogg`, `BAW_EGLL_GEN.ogg`, `BAW_UUDD_ALT.ogg`
+(upper or lower case, it doesn't matter). When a flight's destination has more than one, FCAC pops up a small window
+asking which you prefer (the plain file is listed as "Standard"). Tick **Remember my choice for this airport** to stop
+being asked; **Forget remembered terminal choices** in the tray menu clears that. If `dep` has a `_T5` file but `dest`
+doesn't, `dest` uses its plain file (or the original) for that flight. Closing the window picks the first option.
+From the command line: `--once --airline BAW --dest EGLL --variant T5`.
+
 | Folder | Replaces in the Fenix pack | Used for |
 |--------|----------------------------|----------|
 | `dep`  | `BoardingWelcome` (every Morning / Afternoon / Evening variant) | welcome aboard |
