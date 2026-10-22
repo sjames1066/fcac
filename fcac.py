@@ -74,7 +74,7 @@ MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 DEFAULT_CONFIG = {
     "simbrief_username": "",
     "simbrief_userid": "",
-    "catalog_url": "https://raw.githubusercontent.com/YOUR-GITHUB-USER/YOUR-REPO/main/catalog.json",
+    "catalog_url": "https://raw.githubusercontent.com/sjames1066/fcac/main/catalog.json",
     "community_dir": "",              # leave empty to auto-detect
     "airlines_dir": "",               # your recordings library; empty = an 'Airlines' folder next to the app
     "announcements_folder": "fnx-airline-packs",
@@ -108,6 +108,63 @@ def load_config() -> dict:
     except json.JSONDecodeError as exc:
         raise AppError(f"config.json is not valid JSON: {exc}") from exc
     return {**DEFAULT_CONFIG, **user}
+
+
+def set_config_value(key: str, value) -> None:
+    """Change one setting in config.json, keeping everything else the user has there."""
+    try:
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else dict(DEFAULT_CONFIG)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AppError(f"config.json could not be read: {exc}") from exc
+    data[key] = value
+    CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _helper_command(*args: str) -> list[str]:
+    """Command that runs this program again with `args` (works as a script and as a packaged .exe)."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, str(Path(__file__).resolve()), *args]
+
+
+def ask_text(title: str, prompt: str, default: str = "") -> str | None:
+    """Ask for a line of text in a small window (own process, so Tk never fights the tray icon). None = cancelled."""
+    try:
+        out = subprocess.run(_helper_command("--ask", title, prompt, default), capture_output=True, text=True,
+                             timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        return json.loads(out.strip().splitlines()[-1]).get("text")
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        log.exception("Text dialog failed")
+        return None
+
+
+def run_ask_dialog(title: str, prompt: str, default: str) -> int:
+    import tkinter as tk
+    from tkinter import ttk
+
+    root = tk.Tk()
+    root.title(APP_NAME)
+    root.resizable(False, False)
+    result: dict = {"text": None}
+    value = tk.StringVar(value=default)
+    frame = ttk.Frame(root, padding=16)
+    frame.pack()
+    ttk.Label(frame, text=title, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+    ttk.Label(frame, text=prompt, wraplength=360).pack(anchor="w", pady=(4, 10))
+    entry = ttk.Entry(frame, textvariable=value, width=40)
+    entry.pack(anchor="w")
+    entry.focus_set()
+
+    def done(_event=None) -> None:
+        result["text"] = value.get().strip()
+        root.destroy()
+
+    root.bind("<Return>", done)
+    ttk.Button(frame, text="Save", command=done).pack(anchor="e", pady=(12, 0))
+    root.attributes("-topmost", True)
+    root.mainloop()
+    print(json.dumps(result))
+    return 0
 
 
 def load_state() -> dict:
@@ -218,7 +275,7 @@ def fetch_flight(cfg: dict) -> dict:
     elif str(cfg.get("simbrief_username", "")).strip():
         params["username"] = str(cfg["simbrief_username"]).strip()
     else:
-        raise AppError("Set simbrief_username (or simbrief_userid) in config.json.")
+        raise AppError("Enter your SimBrief username: right-click the tray icon -> Set SimBrief username.")
 
     try:
         resp = requests.get(SIMBRIEF_URL, params=params, timeout=15)
@@ -563,8 +620,7 @@ def variant_name(label: str) -> str:
 def choose_gui(title: str, prompt: str, options: list[str]) -> tuple[str, bool]:
     """Ask which option to use. Runs the dialog in a separate process so Tk never fights the tray icon's loop.
     Returns (chosen option, remember). Closing the window picks the first option."""
-    cmd = ([sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())])
-    cmd += ["--pick", title, prompt, *options]
+    cmd = _helper_command("--pick", title, prompt, *options)
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=flags).stdout
@@ -782,6 +838,7 @@ class TrayApp:
             item("Uninstall airline pack", menu(self.uninstall_items)),
             item("Refresh pack list", lambda: self.refresh_catalog(notify=True)),
             item("Restore original announcements", menu(self.restore_items)),
+            item("Set SimBrief username...", lambda: threading.Thread(target=self.ask_simbrief, daemon=True).start()),
             item("Forget remembered terminal choices", self.forget_choices),
             menu.SEPARATOR,
             item("Open Airlines folder (your recordings)", self.open_airlines_folder),
@@ -815,6 +872,27 @@ class TrayApp:
             for icao, rec in sorted(installed.items())
         ]
         return rows or [item("No packs installed", None, enabled=False)]
+
+    def ask_simbrief(self) -> None:
+        """Ask for the SimBrief username and save it to config.json."""
+        try:
+            cfg = load_config()
+        except AppError as exc:
+            cfg = dict(DEFAULT_CONFIG)
+            log.info("%s", exc)
+        name = ask_text("SimBrief username", "Your SimBrief username (the name you log in with, not the numeric ID). "
+                        "FCAC reads your latest flight plan from it.", str(cfg.get("simbrief_username", "")))
+        if not name:
+            self.set_status("SimBrief username not set - right-click the tray icon -> Set SimBrief username")
+            return
+        try:
+            set_config_value("simbrief_username", name)
+            set_config_value("simbrief_userid", "")  # an old numeric ID would otherwise win over the new name
+        except (AppError, OSError) as exc:
+            self.set_status(f"Could not save config.json: {exc}")
+            return
+        self.set_status(f"SimBrief username set to {name}", notify=True)
+        self.wake.set()
 
     def forget_choices(self) -> None:
         state = load_state()
@@ -980,6 +1058,13 @@ class TrayApp:
         except (AppError, OSError):
             pass  # reported later when the first update runs
         self.refresh_catalog()
+        try:
+            cfg = load_config()
+            needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
+        except AppError:
+            needs_name = True  # first run: config.json was just created
+        if needs_name:
+            threading.Thread(target=self.ask_simbrief, daemon=True).start()
         threading.Thread(target=self.poll_loop, daemon=True).start()
         self.icon.run()
 
@@ -997,10 +1082,13 @@ def main() -> int:
     parser.add_argument("--airline", help="with --once: airline ICAO instead of the SimBrief plan's")
     parser.add_argument("--variant", help="with --once: which recording to use when a destination has several (e.g. T5, or Standard)")
     parser.add_argument("--pick", nargs="+", help=argparse.SUPPRESS)  # internal: choice dialog
+    parser.add_argument("--ask", nargs=3, help=argparse.SUPPRESS)     # internal: text entry dialog
     parser.add_argument("--dest", help="with --once: destination ICAO instead of asking SimBrief")
     args = parser.parse_args()
     if args.pick:
         return run_pick_dialog(args.pick[0], args.pick[1], args.pick[2:])
+    if args.ask:
+        return run_ask_dialog(*args.ask)
 
     logging.basicConfig(
         level=logging.INFO,

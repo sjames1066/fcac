@@ -1,7 +1,7 @@
 {
   "simbrief_username": "YourSimBriefUsername",
   "simbrief_userid": "",
-  "catalog_url": "https://raw.githubusercontent.com/YOUR-GITHUB-USER/YOUR-REPO/main/catalog.json",
+  "catalog_url": "https://raw.githubusercontent.com/sjames1066/fcac/main/catalog.json",
   "community_dir": "",
   "airlines_dir": "",
   "announcements_folder": "fnx-airline-packs",
