@@ -41,6 +41,7 @@ from urllib.request import url2pathname
 import requests
 
 APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
+VERSION = "1.0.1"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
@@ -938,6 +939,7 @@ class UIMixin:
                               "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
         prompt = self.prompt
         return {
+            "version": VERSION,
             "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
             "username": cfg.get("simbrief_username", ""),
             "flight": state.get("flight"),

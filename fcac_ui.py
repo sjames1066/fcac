@@ -276,7 +276,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
-  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
+  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="ver" style="margin-top:14px"></div></div>
 </div>
 
 <div class="modal" id="m-choice"><div class="dialog">
@@ -406,7 +406,7 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
-    $("#auto").classList.toggle("on",!!snap.auto);
+    $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
     renderHero(); renderPacks(); renderPrompt();
     if(snap.setup_needed&&!setupShown){setupShown=true;openName()}
   }catch(e){}
