@@ -87,6 +87,8 @@ Edge or Chrome window, so there is nothing extra to install. The typeface is [In
 
 **Settings** (button at the bottom of the window):
 - **When I close this window:** keep FCAC running in the tray (default), or quit it completely.
+- **When I minimize this window:** minimize normally, or **hide it in the tray** (it leaves the taskbar; double-click
+  the tray icon to bring it back).
 - **Start FCAC automatically:** no, **with MSFS**, or with Windows. "With MSFS" adds FCAC to MSFS 2024's `EXE.xml`
   (next to `UserCfg.opt`, for the Microsoft Store and Steam editions) so the sim launches it; your other entries
   there are left alone, a backup of the file is saved in `%LOCALAPPDATA%\FCAC\backups`, and choosing "No" removes

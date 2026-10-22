@@ -147,7 +147,7 @@ class UIServer:
                         self.profile_dir.mkdir(parents=True, exist_ok=True)
                         self.window = subprocess.Popen(
                             [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", "--window-size=1040,780",
-                             "--no-first-run", "--no-default-browser-check"],
+                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
                         return
@@ -264,7 +264,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
 .modal.show{display:flex}
-.dialog{background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
+.dialog{max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
         box-shadow:0 30px 80px rgba(0,0,0,.6)}
 .dialog h3{margin:0 0 4px;font-size:18px;letter-spacing:-.02em}
 .dialog p{margin:0 0 16px;color:var(--muted)}
@@ -338,6 +338,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <div class="radios" id="s-close">
       <div class="radio" data-v="tray"><b>Keep running in the tray</b><span>FCAC keeps your announcements up to date in the background</span></div>
       <div class="radio" data-v="quit"><b>Quit FCAC</b><span>Closing the window exits the app completely</span></div>
+    </div></div>
+  <div class="setting"><div class="label">When I minimize this window</div>
+    <div class="radios" id="s-min">
+      <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
+      <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
     </div></div>
   <div class="setting"><div class="label">Start FCAC automatically</div>
     <div class="radios" id="s-start">
@@ -468,14 +473,14 @@ function renderPrompt(){
 $("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
-let cfg={on_close:"tray",autostart:"off"};
+let cfg={on_close:"tray",autostart:"off",min:"no"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"on_close":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off"};
+  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no"};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart);
+  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#m-settings").classList.add("show");
 }
@@ -484,9 +489,15 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",quit_with_msfs:$("#s-quit").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
+let minSent=false;
+setInterval(()=>{ // a minimized Chromium window reports its position as far off screen
+  const away=window.screenX<=-30000||window.screenY<=-30000;
+  if(away&&!minSent&&snap&&snap.settings&&snap.settings.minimize_to_tray){minSent=true;api("minimized")}
+  if(!away)minSent=false;
+},500);
 window.addEventListener("pagehide",()=>{try{fetch("/api/closing",{method:"POST",keepalive:true,headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:"{}"})}catch(e){}});
 $("#n-cancel").onclick=()=>$("#m-name").classList.remove("show");
 $("#n-ok").onclick=async()=>{const v=$("#n-input").value.trim(); if(!v)return; $("#m-name").classList.remove("show"); await api("username",{name:v}); toast("Saved - fetching your flight")};

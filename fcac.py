@@ -88,6 +88,7 @@ DEFAULT_CONFIG = {
     "auto_poll": True,
     "poll_interval_seconds": 60,
     "notifications": True,
+    "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
     "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
     "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
@@ -1123,6 +1124,7 @@ class UIMixin:
             "version": VERSION,
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
+                "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
                 "windows": sys.platform.startswith("win"),
@@ -1153,6 +1155,18 @@ class UIMixin:
         from fcac_icon import make_icon
 
         return _png_bytes(make_icon(128))
+
+    def window_minimized(self) -> None:
+        """'Hide to the tray' on minimize: close the window (the app keeps running; the tray icon opens it again)."""
+        try:
+            if not load_config().get("minimize_to_tray"):
+                return
+        except AppError:
+            return
+        window = self.ui.window
+        if window is not None and window.poll() is None:
+            window.terminate()
+            self.set_status("FCAC is in the tray - double-click the icon to open the window")
 
     def window_closed(self) -> None:
         """If 'quit when I close the window' is on, quit after a short grace period (a page reload is not a close)."""
@@ -1236,10 +1250,13 @@ class UIMixin:
                 if mode != current_autostart():
                     apply_autostart(mode)
                 set_config_value("on_close", on_close)
+                set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")
+        elif name == "minimized":
+            self.window_minimized()
         elif name == "closing":  # the window was closed: quit if that is what the user chose
             self.window_closed()
         elif name == "refresh":
