@@ -144,6 +144,10 @@ def load_aliases(cfg: dict) -> dict[str, str]:
     return {str(k).strip().upper(): str(v).strip().upper() for k, v in merged.items() if str(k).strip() and str(v).strip()}
 
 
+def save_aliases(aliases: dict[str, str]) -> None:
+    ALIASES_PATH.write_text(json.dumps(dict(sorted(aliases.items())), indent=2) + "\n", encoding="utf-8")
+
+
 def load_state() -> dict:
     try:
         return json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -938,8 +942,20 @@ class UIMixin:
                 packs.append({"icao": icao, "name": have.get("name", icao), "version": have.get("version", ""),
                               "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
         prompt = self.prompt
+        try:
+            aliases = load_aliases(cfg)
+        except AppError:
+            aliases = {}
+        sources = {p["icao"] for p in packs}
+        try:
+            root = airlines_root(cfg)
+            sources |= {p.name.upper() for p in root.iterdir() if p.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", p.name)}
+        except OSError:
+            pass
         return {
             "version": VERSION,
+            "aliases": aliases,
+            "alias_sources": sorted(set(sources)),
             "library": str(airlines_root(cfg)),
             "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
             "username": cfg.get("simbrief_username", ""),
@@ -991,6 +1007,35 @@ class UIMixin:
             save_state(state)
             self.set_status(f"SimBrief username set to {who}")
             self.poll_once(force=True) if not self.lock.locked() else self.wake.set()
+        elif name in ("alias_add", "alias_remove"):
+            alias = str(data.get("alias", "")).strip().upper()
+            if not re.fullmatch(r"[A-Z0-9]{3}", alias):
+                return {"error": "An airline code is 3 letters or digits, like SHT."}
+            cfg = load_config()
+            try:
+                aliases = load_aliases(cfg)
+            except AppError as exc:
+                return {"error": str(exc)}
+            if name == "alias_add":
+                source = str(data.get("source", "")).strip().upper()
+                if not re.fullmatch(r"[A-Z0-9]{3}", source):
+                    return {"error": "Pick the airline whose recordings it should use (3 letters, like BAW)."}
+                if source == alias:
+                    return {"error": "An airline can't be an alias of itself."}
+                if aliases.get(source):
+                    return {"error": f"{source} is itself an alias of {aliases[source]} - pick {aliases[source]} instead."}
+                aliases[alias] = source
+            else:
+                aliases.pop(alias, None)
+            try:
+                save_aliases(aliases)
+            except OSError as exc:
+                return {"error": f"Could not save aliases.json: {exc}"}
+            state = load_state()
+            state.pop("last", None)
+            save_state(state)
+            self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
+            self.wake.set()
         elif name == "refresh":
             self.refresh_catalog()
         elif name == "forget":

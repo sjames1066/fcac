@@ -245,6 +245,13 @@ button.kofi span{color:#ff6b81;margin-right:4px}
 button.kofi:hover{background:rgba(255,146,24,.22)}
   .support{margin-top:30px;text-align:center;color:var(--faint);font-size:12.5px}
 footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;min-height:34px}
+.chip2{display:inline-flex;align-items:center;gap:8px;padding:6px 8px 6px 14px;border-radius:99px;background:var(--surface2);border:1px solid var(--line2);font-weight:600}
+.chip2 .to{color:var(--faint);font-weight:500}
+.chip2 button{padding:0;width:22px;height:22px;border-radius:50%;line-height:1;font-size:15px;background:transparent;border-color:transparent;color:var(--muted)}
+.chip2 button:hover{background:rgba(255,107,129,.18);color:var(--err)}
+.addrow{display:flex;align-items:center;gap:10px}
+.addrow input{width:96px;text-transform:uppercase;text-align:center;letter-spacing:.06em;font-weight:600}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
 .modal.show{display:flex}
 .dialog{background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
@@ -275,12 +282,24 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
 
+  <div class="section-head" style="margin-top:30px"><h2>Airline aliases</h2><span>Use another airline's recordings, e.g. BA Shuttle (SHT) with the BAW pack</span></div>
+  <section class="card" id="aliases">
+    <div class="chips" id="alias-list"></div>
+    <div class="addrow">
+      <input type="text" id="a-alias" maxlength="3" placeholder="Airline" autocomplete="off" spellcheck="false">
+      <span class="small">uses</span>
+      <input type="text" id="a-source" maxlength="3" placeholder="Pack" list="a-sources" autocomplete="off" spellcheck="false">
+      <datalist id="a-sources"></datalist>
+      <button class="primary" id="a-add">Add alias</button>
+    </div>
+    <div class="small" style="margin-top:10px">Fenix only uses an airline pack when its folder matches the livery's airline code, so FCAC builds a pack folder for the alias from the other airline's files.</div>
+  </section>
+
   <footer>
     <button class="ghost" data-open="airlines">Your recordings</button>
     <button class="ghost" data-open="fenix">Fenix packs folder</button>
     <button class="ghost" data-open="log">View log</button>
     <button class="ghost" id="settings">SimBrief username</button>
-    <button class="ghost" data-open="aliases">Airline aliases</button>
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
@@ -388,6 +407,23 @@ function renderPacks(){
   $("#packsub").textContent=snap.packs.length?inst+" of "+snap.packs.length+" installed":"";
   const errs=snap.packs.filter(p=>p.error);
 }
+let aliasSig="";
+function renderAliases(){
+  const sig=JSON.stringify([snap.aliases,snap.alias_sources]); if(sig===aliasSig) return; aliasSig=sig;
+  const box=$("#alias-list"); box.replaceChildren();
+  const entries=Object.entries(snap.aliases||{});
+  if(!entries.length) box.append(el("span","small","No aliases yet."));
+  entries.forEach(([a,s])=>{
+    const c=el("span","chip2"); c.append(document.createTextNode(a)); c.append(el("span","to","\u2192")); c.append(document.createTextNode(s));
+    const x=el("button",null,"\u00d7"); x.title="Remove"; x.onclick=()=>api("alias_remove",{alias:a}); c.append(x); box.append(c);
+  });
+  const dl=$("#a-sources"); dl.replaceChildren(); (snap.alias_sources||[]).forEach(v=>{const o=document.createElement("option");o.value=v;dl.append(o)});
+}
+$("#a-add").onclick=async()=>{
+  const a=$("#a-alias").value.trim(), s=$("#a-source").value.trim(); if(!a||!s){toast("Enter both airline codes");return}
+  const r=await api("alias_add",{alias:a,source:s}); if(!r.error){$("#a-alias").value="";$("#a-source").value="";toast(a.toUpperCase()+" now uses "+s.toUpperCase()+" recordings")}
+};
+["a-alias","a-source"].forEach(id=>$("#"+id).addEventListener("keydown",e=>{if(e.key==="Enter")$("#a-add").click()}));
 function renderPrompt(){
   const p=snap.prompt, m=$("#m-choice");
   if(!p){m.classList.remove("show");promptId=null;return}
@@ -415,7 +451,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderPacks(); renderPrompt();
+    renderHero(); renderPacks(); renderAliases(); renderPrompt();
     if(snap.setup_needed&&!setupShown){setupShown=true;openName()}
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt))?500:1500);
