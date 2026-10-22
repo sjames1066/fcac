@@ -37,6 +37,8 @@ def add_folder(archive: zipfile.ZipFile, folder: Path, prefix: str, airline: str
     for path in sorted(folder.rglob("*")):
         if not path.is_file():
             continue
+        if path.suffix.lower() != ".ogg":  # sound files only (not the _put_..._here.txt notes)
+            continue
         if airline is not None:
             match = CLIP_NAME.match(path.name)
             if not match or match["airline"].upper() != airline or path.parent != folder:
@@ -60,6 +62,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("dist"))
     parser.add_argument("--catalog", type=Path, help="catalog.json to create or update (default: <out>/catalog.json)")
     parser.add_argument("--url", help="download URL of the zip (default: <ICAO>.zip next to the catalog)")
+    parser.add_argument("--github", metavar="USER/REPO",
+                        help="build --url for a GitHub Release tagged <icao>-<version>, e.g. sjames1066/fcac")
     args = parser.parse_args()
 
     icao = args.icao.upper()
@@ -78,6 +82,10 @@ def main() -> int:
         if folder is not None and not folder.is_dir():
             print(f"ERROR: --{label} folder not found: {folder}", file=sys.stderr)
             return 1
+
+    tag = f"{icao.lower()}-{args.version}"
+    if args.github and not args.url:
+        args.url = f"https://github.com/{args.github}/releases/download/{tag}/{icao}.zip"
 
     args.out.mkdir(parents=True, exist_ok=True)
     zip_path = args.out / f"{icao}.zip"
@@ -107,6 +115,9 @@ def main() -> int:
     catalog_path.write_text(json.dumps(catalog, indent=2), encoding="utf-8")
 
     print(f"\nWrote {zip_path} ({entry['size']:,} bytes) and updated {catalog_path}")
+    if args.github:
+        print(f"Next: make a GitHub Release tagged  {tag}  at https://github.com/{args.github}/releases/new")
+        print(f"      attach {zip_path.name}, then upload {catalog_path.name} to the repo root.")
     return 0
 
 
