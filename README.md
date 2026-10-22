@@ -67,8 +67,24 @@ FCAC updates on every new SimBrief plan. Generate your plan and wait for the tra
 starts**; the sim reads the files when each announcement plays. Added a new recording for the flight you already
 loaded? Click **Update from SimBrief now** so it is picked up.
 
+### The FCAC window
+
+Double-click the tray icon (or right-click -> **Open FCAC window**) for the main window: your latest SimBrief flight,
+every airline pack with its logo, one-click **Install / Update / Uninstall** with a progress bar, the auto-update
+switch and your SimBrief username. It also asks which recording to use when an airport has several. The first time
+you run FCAC it asks for your SimBrief username there.
+
+It is a small page served only to your own PC (127.0.0.1, protected by a random token) and shown in an app-style
+Edge or Chrome window, so there is nothing extra to install. The typeface is [Inter](https://rsms.me/inter/)
+(SIL Open Font License 1.1), built in so it looks the same offline.
+
+**Logos.** FCAC doesn't ship airline logos. The pack list shows, in this order: a `logo.png` you put in
+`Airlines\<ICAO>\` yourself, the logo the pack publisher links in the catalog (see `--logo-url` below), or a coloured
+tile with the airline's ICAO code.
+
 ### Tray menu
 
+- **Open FCAC window** (also the double-click action)
 - **Update from SimBrief now**: re-check and re-apply immediately
 - **Auto-update**: pause/resume checking (every 60 s by default)
 - **Install airline pack**: packs in the catalog that aren't installed (or have an update). One click downloads, verifies and installs.
@@ -122,7 +138,8 @@ dest\   BAW_BIKF.ogg ...
 fuel\   BAW_BIKF.ogg ...
 ```
 
-Files in `dep`/`dest`/`fuel` that aren't named `<ICAO>_<4-char ICAO>.ogg` are skipped with a message.
+Add `--logo-url https://.../logo.png` to show the airline's logo in the pack list (use artwork you have the right to
+use). Files in `dep`/`dest`/`fuel` that aren't named `<ICAO>_<4-char ICAO>.ogg` are skipped with a message.
 
 #### 2. Host it on GitHub
 

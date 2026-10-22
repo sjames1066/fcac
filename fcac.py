@@ -120,53 +120,6 @@ def set_config_value(key: str, value) -> None:
     CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _helper_command(*args: str) -> list[str]:
-    """Command that runs this program again with `args` (works as a script and as a packaged .exe)."""
-    if getattr(sys, "frozen", False):
-        return [sys.executable, *args]
-    return [sys.executable, str(Path(__file__).resolve()), *args]
-
-
-def ask_text(title: str, prompt: str, default: str = "") -> str | None:
-    """Ask for a line of text in a small window (own process, so Tk never fights the tray icon). None = cancelled."""
-    try:
-        out = subprocess.run(_helper_command("--ask", title, prompt, default), capture_output=True, text=True,
-                             timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-        return json.loads(out.strip().splitlines()[-1]).get("text")
-    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
-        log.exception("Text dialog failed")
-        return None
-
-
-def run_ask_dialog(title: str, prompt: str, default: str) -> int:
-    import tkinter as tk
-    from tkinter import ttk
-
-    root = tk.Tk()
-    root.title(APP_NAME)
-    root.resizable(False, False)
-    result: dict = {"text": None}
-    value = tk.StringVar(value=default)
-    frame = ttk.Frame(root, padding=16)
-    frame.pack()
-    ttk.Label(frame, text=title, font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(frame, text=prompt, wraplength=360).pack(anchor="w", pady=(4, 10))
-    entry = ttk.Entry(frame, textvariable=value, width=40)
-    entry.pack(anchor="w")
-    entry.focus_set()
-
-    def done(_event=None) -> None:
-        result["text"] = value.get().strip()
-        root.destroy()
-
-    root.bind("<Return>", done)
-    ttk.Button(frame, text="Save", command=done).pack(anchor="e", pady=(12, 0))
-    root.attributes("-topmost", True)
-    root.mainloop()
-    print(json.dumps(result))
-    return 0
-
-
 def load_state() -> dict:
     try:
         return json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -343,6 +296,8 @@ def load_catalog(cfg: dict) -> list[dict]:
             "version": str(entry.get("version", "")),
             "sha256": str(entry.get("sha256", "")).lower(),
             "url": resolved,
+            "size": int(entry["size"]) if str(entry.get("size", "")).isdigit() else 0,
+            "logo": str(entry.get("logo", "")).strip() if _is_http(str(entry.get("logo", "")).strip()) else "",
         })
     return sorted(packs, key=lambda p: p["icao"])
 
@@ -435,6 +390,7 @@ def has_ogg(folder: Path) -> bool:
 
 
 def install_pack(cfg: dict, entry: dict, progress=None) -> str:
+    """progress(text, fraction) is called as it goes; fraction is 0..1 (or None when unknown)."""
     """Install a catalog pack: its files go into Airlines\\<ICAO> (never over your own recordings) and its generic
     files into the Fenix AirlinePacks folder. A pack that was already in the Fenix folder is set aside and restored
     when you uninstall."""
@@ -446,16 +402,29 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
     record = installed.get(icao) or {}
     ours = set(record.get("files", []))
 
+    def report(text: str, fraction: float | None = None) -> None:
+        if progress:
+            progress(text, fraction)
+
+    def downloading(done: int, total: int) -> None:
+        report(f"Downloading  {done / 1e6:.0f} of {total / 1e6:.0f} MB", 0.8 * done / total)
+
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as tmp:
         zip_path = Path(tmp) / f"{icao}.zip"
-        download_pack(entry, zip_path, progress)
+        report("Starting download", 0.0)
+        download_pack(entry, zip_path, downloading)
+        report("Verified - unpacking", 0.82)
         staging = Path(tmp) / "extract"
         extract_pack(zip_path, staging)
+        report("Installing files", 0.88)
 
         try:
             # 1. Library: add the pack's files. Files you put there yourself are never overwritten.
             added, skipped = [], 0
-            for src in sorted(p for p in staging.rglob("*") if p.is_file()):
+            files = sorted(p for p in staging.rglob("*") if p.is_file())
+            for number, src in enumerate(files, 1):
+                if number % 20 == 0:
+                    report("Installing files", 0.88 + 0.1 * number / len(files))
                 rel = src.relative_to(staging).as_posix()
                 dst = lib_dir / rel
                 if dst.exists() and rel not in ours:
@@ -481,6 +450,7 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
         except OSError as exc:
             raise AppError(f"Could not install {icao} (is MSFS using the files?): {exc}") from exc
 
+    report("Finishing", 0.99)
     installed[icao] = {
         "name": entry.get("name", icao),
         "version": entry.get("version", ""),
@@ -617,49 +587,12 @@ def variant_name(label: str) -> str:
     return label or STANDARD
 
 
-def choose_gui(title: str, prompt: str, options: list[str]) -> tuple[str, bool]:
-    """Ask which option to use. Runs the dialog in a separate process so Tk never fights the tray icon's loop.
-    Returns (chosen option, remember). Closing the window picks the first option."""
-    cmd = _helper_command("--pick", title, prompt, *options)
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=flags).stdout
-        data = json.loads(out.strip().splitlines()[-1])
-        if data["choice"] in options:
-            return data["choice"], bool(data.get("remember"))
-    except (OSError, ValueError, KeyError, IndexError, subprocess.TimeoutExpired):
-        log.exception("Choice dialog failed")
+CHOOSER = None  # set by the tray app: asks in the FCAC window which recording to use
+
+
+def choose_default(title: str, prompt: str, options: list[str]) -> tuple[str, bool]:
+    """No window available (command line): take the first option."""
     return options[0], False
-
-
-def run_pick_dialog(title: str, prompt: str, options: list[str]) -> int:
-    """Small Tk window: radio buttons + 'remember'. Prints {"choice":..., "remember":...} as JSON."""
-    import tkinter as tk
-    from tkinter import ttk
-
-    root = tk.Tk()
-    root.title(APP_NAME)
-    root.resizable(False, False)
-    result = {"choice": options[0], "remember": False}
-    picked, remember = tk.StringVar(value=options[0]), tk.BooleanVar(value=False)
-    frame = ttk.Frame(root, padding=16)
-    frame.pack()
-    ttk.Label(frame, text=title, font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(frame, text=prompt, wraplength=340).pack(anchor="w", pady=(4, 10))
-    for option in options:
-        ttk.Radiobutton(frame, text=option, value=option, variable=picked).pack(anchor="w", pady=1)
-    ttk.Checkbutton(frame, text="Remember my choice for this airport", variable=remember).pack(anchor="w", pady=(10, 8))
-
-    def done() -> None:
-        result.update(choice=picked.get(), remember=remember.get())
-        root.destroy()
-
-    ttk.Button(frame, text="Use this one", command=done).pack(anchor="e")
-    root.protocol("WM_DELETE_WINDOW", root.destroy)  # closing = the first option, not remembered
-    root.attributes("-topmost", True)
-    root.mainloop()
-    print(json.dumps(result))
-    return 0
 
 
 def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> str:
@@ -725,7 +658,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     elif len(options) == 1:
         chosen = options[0]
     elif len(options) > 1:
-        chosen = pick_variant(airline, dest_icao, options, choose or choose_gui)
+        chosen = pick_variant(airline, dest_icao, options, choose or CHOOSER or choose_default)
 
     summary, custom = [], 0
     for mapping in cfg["mappings"]:
@@ -782,6 +715,10 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
     key = f"{code}_{flight['icao']}"
     state = load_state()
+    shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", "")}
+    if state.get("flight") != shown:
+        state["flight"] = shown
+        save_state(state)
     if not force and state.get("last") == key:
         return False, f"Unchanged: {code} to {flight['icao']}"
     message = apply_destination(cfg, code, flight["icao"], variant=variant)
@@ -811,7 +748,306 @@ def open_path(path: Path) -> None:
         log.exception("Could not open %s", path)
 
 
-class TrayApp:
+# --------------------------------------------------------------------------- airline logos
+LOGO_DIR = DATA_DIR / "logos"
+_logo_cache: dict = {}
+_PALETTES = [((107, 47, 214), (206, 58, 128)), ((206, 58, 128), (255, 146, 24)), ((60, 90, 220), (107, 47, 214)),
+             ((20, 150, 160), (60, 90, 220)), ((255, 146, 24), (214, 60, 60)), ((120, 60, 200), (40, 130, 210))]
+
+
+def _png_bytes(img) -> bytes:
+    import io
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _font(size: int):
+    import base64
+    import io
+
+    from PIL import ImageFont
+
+    try:
+        from fcac_fonts import INTER
+
+        return ImageFont.truetype(io.BytesIO(base64.b64decode(INTER["Bold"])), size)
+    except Exception:
+        pass
+    for name in ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)
+
+
+def logo_tile(source) -> "Image.Image":
+    """Any logo image -> a 256px rounded white tile with the logo centred (logos are drawn for light backgrounds)."""
+    from PIL import Image, ImageDraw
+
+    size = 256
+    logo = source.convert("RGBA")
+    logo.thumbnail((int(size * 0.74), int(size * 0.74)), Image.LANCZOS)
+    tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=int(size * 0.23), fill=255)
+    tile.paste((255, 255, 255, 255), (0, 0), mask)
+    tile.alpha_composite(logo, ((size - logo.width) // 2, (size - logo.height) // 2))
+    return tile
+
+
+def monogram(icao: str) -> bytes:
+    """Stand-in 'logo' when no image was supplied: the ICAO code on a gradient tile (colour picked from the code)."""
+    from PIL import Image, ImageChops, ImageDraw
+
+    size = 256
+    first, second = _PALETTES[sum(ord(c) * (i + 3) for i, c in enumerate(icao)) % len(_PALETTES)]
+    vertical = Image.linear_gradient("L").resize((size, size))
+    t = ImageChops.add(vertical, vertical.rotate(90), scale=2)
+    tile = Image.composite(Image.new("RGB", (size, size), second), Image.new("RGB", (size, size), first), t).convert("RGBA")
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=int(size * 0.23), fill=255)
+    tile.putalpha(mask)
+    draw = ImageDraw.Draw(tile)
+    font = _font(92 if len(icao) <= 3 else 72)
+    box = draw.textbbox((0, 0), icao, font=font)
+    draw.text(((size - (box[2] - box[0])) / 2 - box[0], (size - (box[3] - box[1])) / 2 - box[1] - 2), icao,
+              font=font, fill=(255, 255, 255, 255))
+    return _png_bytes(tile)
+
+
+def cache_remote_logo(entry: dict) -> bool:
+    """Download the catalog's logo image for a pack (once). Returns True if a new logo was stored."""
+    from PIL import Image
+    import io
+
+    url, icao = entry.get("logo", ""), entry["icao"]
+    target = LOGO_DIR / f"{icao}.png"
+    if not url or target.exists():
+        return False
+    try:
+        resp = requests.get(url, timeout=20, stream=True)
+        resp.raise_for_status()
+        data = resp.raw.read(3 * 1024 * 1024 + 1, decode_content=True)
+        if len(data) > 3 * 1024 * 1024:
+            return False
+        image = Image.open(io.BytesIO(data))
+        image.load()
+        LOGO_DIR.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(_png_bytes(logo_tile(image)))
+        return True
+    except Exception:
+        log.warning("Could not fetch the logo for %s", icao)
+        return False
+
+
+def logo_png(cfg: dict, icao: str) -> bytes:
+    """Logo for an airline: your own Airlines/<ICAO>/logo.png, else the pack's logo, else a monogram tile."""
+    from PIL import Image
+
+    try:
+        folder = airline_folder(cfg, icao)
+        for name in ("logo.png", "logo.jpg", "logo.jpeg", "logo.webp"):
+            path = folder / name
+            if path.is_file():
+                key = (str(path), path.stat().st_mtime_ns)
+                if key not in _logo_cache:
+                    _logo_cache[key] = _png_bytes(logo_tile(Image.open(path)))
+                return _logo_cache[key]
+    except Exception:
+        log.warning("Could not read your logo for %s", icao)
+    cached = LOGO_DIR / f"{icao}.png"
+    if cached.is_file():
+        return cached.read_bytes()
+    if ("mono", icao) not in _logo_cache:
+        _logo_cache[("mono", icao)] = monogram(icao)
+    return _logo_cache[("mono", icao)]
+
+
+# --------------------------------------------------------------------------- the FCAC window (see fcac_ui.py)
+class UIMixin:
+    """What the window shows and does. Needs: lock, catalog, catalog_error, status, auto, wake, set_status(),
+    refresh_catalog(), refresh_menu(), poll_once(), run_task()."""
+
+    def _ui_init(self) -> None:
+        import fcac_ui
+
+        self.tasks: dict[str, dict] = {}
+        self.prompt: dict | None = None
+        self.logo_version = 0
+        self.ui = fcac_ui.UIServer(self, DATA_DIR / "ui-profile")
+
+    def open_window(self) -> None:
+        self.ui.open_window()
+
+    # data for the page
+    def ui_snapshot(self) -> dict:
+        try:
+            cfg = load_config()
+        except AppError:
+            cfg = dict(DEFAULT_CONFIG)
+        state = load_state()
+        installed = state.get("installed", {})
+        packs, seen = [], set()
+        for entry in self.catalog:
+            seen.add(entry["icao"])
+            have = installed.get(entry["icao"])
+            packs.append({
+                "icao": entry["icao"], "name": entry["name"], "version": entry["version"],
+                "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0,
+                "installed": bool(have), "update": bool(have and have.get("version") != entry["version"]),
+                "task": self.tasks.get(entry["icao"]),
+            })
+        for icao, have in sorted(installed.items()):  # installed packs stay listed even if the catalog is down
+            if icao not in seen:
+                packs.append({"icao": icao, "name": have.get("name", icao), "version": have.get("version", ""),
+                              "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
+        prompt = self.prompt
+        return {
+            "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
+            "username": cfg.get("simbrief_username", ""),
+            "flight": state.get("flight"),
+            "message": self.status,
+            "updated": state.get("updated", ""),
+            "auto": self.auto,
+            "busy": self.lock.locked() or bool(self.tasks),
+            "packs": packs,
+            "catalog_error": self.catalog_error,
+            "logo_v": self.logo_version,
+            "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
+        }
+
+    def ui_logo(self, icao: str) -> tuple[bytes, str]:
+        try:
+            return logo_png(load_config(), check_airline_code(icao)), "image/png"
+        except (AppError, OSError):
+            return monogram(icao[:4] or "?"), "image/png"
+
+    def ui_icon(self) -> bytes:
+        from fcac_icon import make_icon
+
+        return _png_bytes(make_icon(128))
+
+    # things the page can ask for
+    def ui_action(self, name: str, data: dict) -> dict:
+        if name == "install":
+            entry = next((e for e in self.catalog if e["icao"] == str(data.get("icao", "")).upper()), None)
+            if not entry:
+                return {"error": "That pack is not in the catalog - refresh the list."}
+            self.start_pack_task("install", entry["icao"], entry)
+        elif name == "uninstall":
+            self.start_pack_task("uninstall", check_airline_code(str(data.get("icao", ""))))
+        elif name == "update":
+            self.run_task("Updating", self.do_update)
+        elif name == "auto":
+            self.auto = bool(data.get("on"))
+            self.refresh_menu()
+            self.wake.set()
+        elif name == "username":
+            who = str(data.get("name", "")).strip()
+            if not re.fullmatch(r"[\w.\- ]{1,60}", who):
+                return {"error": "That doesn't look like a SimBrief username."}
+            set_config_value("simbrief_username", who)
+            set_config_value("simbrief_userid", "")  # an old numeric ID would otherwise win over the new name
+            state = load_state()
+            state.pop("last", None)
+            save_state(state)
+            self.set_status(f"SimBrief username set to {who}")
+            self.poll_once(force=True) if not self.lock.locked() else self.wake.set()
+        elif name == "refresh":
+            self.refresh_catalog()
+        elif name == "forget":
+            self.forget_choices()
+        elif name == "answer":
+            prompt = self.prompt
+            if prompt and prompt["id"] == data.get("id") and data.get("choice") in prompt["options"]:
+                prompt["answer"] = (data["choice"], bool(data.get("remember")))
+                prompt["event"].set()
+        elif name == "open":
+            self._open_folder(str(data.get("what", "")))
+        else:
+            return {"error": "unknown action"}
+        return {"ok": True}
+
+    def _open_folder(self, what: str) -> None:
+        try:
+            cfg = load_config()
+            if what == "airlines":
+                target = airlines_root(cfg)
+            elif what == "fenix":
+                target = airline_packs_dir(cfg)
+            elif what == "log":
+                open_path(LOG_PATH)
+                return
+            else:
+                return
+            target.mkdir(parents=True, exist_ok=True)
+            open_path(target)
+        except (AppError, OSError) as exc:
+            self.set_status(str(exc))
+
+    # install / uninstall with progress
+    def start_pack_task(self, kind: str, icao: str, entry: dict | None = None) -> None:
+        if icao in self.tasks:
+            return
+        task = {"kind": kind, "text": "Starting", "frac": 0.0 if kind == "install" else None}
+        self.tasks[icao] = task
+
+        last_step = [-1]
+
+        def progress(text: str, fraction: float | None) -> None:
+            task["text"], task["frac"] = text, fraction
+            step = -1 if fraction is None else int(fraction * 10)  # status line only changes every 10%
+            if step != last_step[0]:
+                last_step[0] = step
+                self.set_status(f"{icao}: {text}")
+
+        def work() -> None:
+            ran = False
+            try:
+                if not self.lock.acquire(blocking=False):
+                    self.set_status("Busy - try again in a moment")
+                    return
+                ran = True
+                try:
+                    if kind == "install":
+                        message = install_pack(load_config(), entry, progress)
+                    else:
+                        task.update(text="Removing files", frac=None)
+                        message = uninstall_pack(load_config(), icao)
+                    self.set_status(message, notify=True)
+                except AppError as exc:
+                    self.set_status(str(exc), notify=True)
+                except Exception as exc:
+                    log.exception("Unexpected error")
+                    self.set_status(f"Error: {exc}", notify=True)
+                finally:
+                    self.lock.release()
+            finally:
+                self.tasks.pop(icao, None)
+            if ran and kind == "install":
+                self.poll_once(force=True)  # apply the current flight with the new files
+            self.refresh_menu()
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def ask_choice(self, title: str, text: str, options: list[str]) -> tuple[str, bool]:
+        """Called while applying a flight whose airport has several recordings. Waits for the window's answer."""
+        import secrets
+
+        event = threading.Event()
+        self.prompt = {"id": secrets.token_hex(4), "title": title, "text": text, "options": options,
+                       "event": event, "answer": None}
+        self.set_status(f"{title}: choose a recording in the FCAC window", notify=True)
+        self.open_window()
+        event.wait(timeout=600)
+        prompt, self.prompt = self.prompt, None
+        return (prompt or {}).get("answer") or (options[0], False)
+
+
+class TrayApp(UIMixin):
     def __init__(self) -> None:
         import pystray
 
@@ -823,12 +1059,16 @@ class TrayApp:
         self.auto = True
         self.catalog: list[dict] = []
         self.catalog_error = ""
+        self._ui_init()
+        global CHOOSER
+        CHOOSER = self.ask_choice
         self.icon = pystray.Icon(APP_NAME, make_icon_image(), APP_NAME, self.build_menu())
 
     # menu ---------------------------------------------------------------
     def build_menu(self):
         item, menu = self.pystray.MenuItem, self.pystray.Menu
         return menu(
+            item("Open FCAC window", self.open_window, default=True),
             item(lambda _: self.status, None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
@@ -838,7 +1078,6 @@ class TrayApp:
             item("Uninstall airline pack", menu(self.uninstall_items)),
             item("Refresh pack list", lambda: self.refresh_catalog(notify=True)),
             item("Restore original announcements", menu(self.restore_items)),
-            item("Set SimBrief username...", lambda: threading.Thread(target=self.ask_simbrief, daemon=True).start()),
             item("Forget remembered terminal choices", self.forget_choices),
             menu.SEPARATOR,
             item("Open Airlines folder (your recordings)", self.open_airlines_folder),
@@ -872,27 +1111,6 @@ class TrayApp:
             for icao, rec in sorted(installed.items())
         ]
         return rows or [item("No packs installed", None, enabled=False)]
-
-    def ask_simbrief(self) -> None:
-        """Ask for the SimBrief username and save it to config.json."""
-        try:
-            cfg = load_config()
-        except AppError as exc:
-            cfg = dict(DEFAULT_CONFIG)
-            log.info("%s", exc)
-        name = ask_text("SimBrief username", "Your SimBrief username (the name you log in with, not the numeric ID). "
-                        "FCAC reads your latest flight plan from it.", str(cfg.get("simbrief_username", "")))
-        if not name:
-            self.set_status("SimBrief username not set - right-click the tray icon -> Set SimBrief username")
-            return
-        try:
-            set_config_value("simbrief_username", name)
-            set_config_value("simbrief_userid", "")  # an old numeric ID would otherwise win over the new name
-        except (AppError, OSError) as exc:
-            self.set_status(f"Could not save config.json: {exc}")
-            return
-        self.set_status(f"SimBrief username set to {name}", notify=True)
-        self.wake.set()
 
     def forget_choices(self) -> None:
         state = load_state()
@@ -928,10 +1146,10 @@ class TrayApp:
             self.set_status(str(exc), notify=True)
 
     def _install_action(self, entry: dict):
-        return lambda: self.run_task(f"Installing {entry['icao']}", lambda: self.do_install(entry), then_update=True)
+        return lambda: self.start_pack_task("install", entry["icao"], entry)
 
     def _uninstall_action(self, icao: str):
-        return lambda: self.run_task(f"Uninstalling {icao}", lambda: uninstall_pack(load_config(), icao))
+        return lambda: self.start_pack_task("uninstall", icao)
 
     def open_packs_folder(self) -> None:
         try:
@@ -963,17 +1181,6 @@ class TrayApp:
             log.exception("Tray update failed")
 
     # work ---------------------------------------------------------------
-    def do_install(self, entry: dict) -> str:
-        last = {"pct": -10}
-
-        def progress(done: int, total: int) -> None:
-            pct = int(done * 100 / total)
-            if pct - last["pct"] >= 5:
-                last["pct"] = pct
-                self.set_status(f"Downloading {entry['icao']}... {pct}%")
-
-        return install_pack(load_config(), entry, progress)
-
     def do_update(self) -> str:
         return update(load_config(), force=True)[1]
 
@@ -1011,6 +1218,8 @@ class TrayApp:
             try:
                 self.catalog = load_catalog(load_config())
                 self.catalog_error = ""
+                if any([cache_remote_logo(e) for e in self.catalog]):
+                    self.logo_version += 1
                 if notify:
                     self.set_status(f"Pack list refreshed ({len(self.catalog)} available)", notify=True)
             except AppError as exc:
@@ -1064,7 +1273,7 @@ class TrayApp:
         except AppError:
             needs_name = True  # first run: config.json was just created
         if needs_name:
-            threading.Thread(target=self.ask_simbrief, daemon=True).start()
+            self.open_window()  # the window asks for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
         self.icon.run()
 
@@ -1081,14 +1290,8 @@ def main() -> int:
     parser.add_argument("--once", action="store_true", help="update once and exit (no tray icon)")
     parser.add_argument("--airline", help="with --once: airline ICAO instead of the SimBrief plan's")
     parser.add_argument("--variant", help="with --once: which recording to use when a destination has several (e.g. T5, or Standard)")
-    parser.add_argument("--pick", nargs="+", help=argparse.SUPPRESS)  # internal: choice dialog
-    parser.add_argument("--ask", nargs=3, help=argparse.SUPPRESS)     # internal: text entry dialog
     parser.add_argument("--dest", help="with --once: destination ICAO instead of asking SimBrief")
     args = parser.parse_args()
-    if args.pick:
-        return run_pick_dialog(args.pick[0], args.pick[1], args.pick[2:])
-    if args.ask:
-        return run_ask_dialog(*args.ask)
 
     logging.basicConfig(
         level=logging.INFO,

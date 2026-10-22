@@ -62,6 +62,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("dist"))
     parser.add_argument("--catalog", type=Path, help="catalog.json to create or update (default: <out>/catalog.json)")
     parser.add_argument("--url", help="download URL of the zip (default: <ICAO>.zip next to the catalog)")
+    parser.add_argument("--logo-url", help="https:// link to the airline's logo image (shown in the pack list); you supply the artwork")
     parser.add_argument("--github", metavar="USER/REPO",
                         help="build --url for a GitHub Release tagged <icao>-<version>, e.g. sjames1066/fcac")
     args = parser.parse_args()
@@ -105,6 +106,8 @@ def main() -> int:
         "sha256": sha256,
         "size": zip_path.stat().st_size,
     }
+    if args.logo_url:
+        entry["logo"] = args.logo_url
 
     catalog_path = args.catalog or args.out / "catalog.json"
     catalog = {"packs": []}
