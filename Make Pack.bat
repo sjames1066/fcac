@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 call :findpython
 if not defined PYEXE goto nopython
-set "GITHUB=sjames1066/fcac"
+set "GITHUB=sjames1066/fcac-packs"
 set "AIRLINE=BAW"
 set /p "AIRLINE=Airline ICAO code to package [BAW]: "
 set "ANAME=British Airways"
