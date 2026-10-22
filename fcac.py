@@ -80,6 +80,9 @@ DEFAULT_CONFIG = {
     "airlines_dir": "",               # your recordings library; empty = an 'Airlines' folder next to the app
     "announcements_folder": "fnx-airline-packs",
     "airline_override": "",           # force an airline ICAO instead of using the SimBrief plan
+    # Airlines that share another airline's recordings, e.g. BA Shuttle (SHT) flies with the BAW pack:
+    # {"SHT": "BAW"} puts the BAW announcements in the Fenix pack folder named SHT.
+    "airline_aliases": {"SHT": "BAW"},
     "auto_poll": True,
     "poll_interval_seconds": 60,
     "notifications": True,
@@ -620,10 +623,15 @@ def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> st
 def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None) -> str:
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
-    airline = check_airline_code(airline)
-    lib_dir, created = ensure_airline_folders(cfg, airline)
+    airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
+    aliases = {str(k).strip().upper(): str(v).strip().upper() for k, v in (cfg.get("airline_aliases") or {}).items()}
+    source = check_airline_code(aliases.get(airline, airline))  # whose recordings to use, e.g. BAW
+    lib_dir, created = ensure_airline_folders(cfg, source)
     fenix_dir = airline_packs_dir(cfg) / airline
-    pristine = generic_source(cfg, airline, fenix_dir)
+    if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
+        pristine = generic_source(cfg, airline, fenix_dir)
+    else:
+        pristine = lib_dir / MAIN_FOLDER  # SHT's pack is built from BAW's general PAs
     if not pristine:
         # Never create an empty/partial pack: Fenix would pick it over its default pack and lose announcements.
         extra = f" Created {lib_dir} for your recordings." if created else ""
@@ -649,7 +657,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                     install_file(path, dst)
                     synced += 1
 
-    all_clips = {m["folder"]: find_clips(lib_dir, m["folder"], airline, dest_icao) for m in cfg["mappings"]}
+    all_clips = {m["folder"]: find_clips(lib_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
     options = variant_options(all_clips)
     chosen = ""
     if variant is not None:
@@ -677,13 +685,13 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
         summary.append(f"{mapping['folder']}: {'custom' if clip else 'generic'}")
 
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
-    message = f"{airline} to {shown} ({', '.join(summary)})"
+    message = f"{airline} to {shown} ({', '.join(summary)})" + (f" using {source} recordings" if source != airline else "")
     if synced:
         message += f" - updated {synced} general PA file(s) from main"
     if created:
         message += f" - created {lib_dir}, add your recordings there"
     elif not custom:
-        message += f" - no recordings for {airline}_{dest_icao} yet"
+        message += f" - no recordings for {source}_{dest_icao} yet"
     return message
 
 
@@ -848,6 +856,7 @@ def logo_png(cfg: dict, icao: str) -> bytes:
     """Logo for an airline: your own Airlines/<ICAO>/logo.png, else the pack's logo, else a monogram tile."""
     from PIL import Image
 
+    icao = {str(k).strip().upper(): str(v).strip().upper() for k, v in (cfg.get("airline_aliases") or {}).items()}.get(icao, icao)
     try:
         folder = airline_folder(cfg, icao)
         for name in ("logo.png", "logo.jpg", "logo.jpeg", "logo.webp"):

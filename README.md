@@ -45,6 +45,10 @@ From the command line: `--once --airline BAW --dest EGLL --variant T5`.
   destination never lingers.
 - **`main`** holds the airline's general PAs (and the original generic BoardingWelcome/AfterLanding, used when a destination has no recording). Any other file there (SafetyBriefing, ArmDoors...) is copied into the Fenix pack when it is new or changed.
 - **New airline?** Fly it once and FCAC creates its folders for you, or run `python fcac.py --add-airline DLH`.
+- **Sub-brands sharing a pack.** `airline_aliases` in `config.json` makes one airline use another's recordings, e.g.
+  `"airline_aliases": {"SHT": "BAW"}` (the default): a flight with airline SHT (BA Shuttle) uses `Airlines\BAW` and
+  fills the Fenix pack folder `AirlinePacks\SHT`, which Fenix needs because it matches the livery's airline code.
+  Add more pairs the same way, e.g. `{"SHT": "BAW", "CFE": "BAW"}`.
 - The mapping is the `mappings` list in `config.json` if you ever want to change it. `airlines_dir` in `config.json`
   moves the Airlines folder somewhere else.
 
