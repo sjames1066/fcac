@@ -1122,6 +1122,7 @@ class UIMixin:
             pass
         return {
             "version": VERSION,
+            "welcome": self._welcome_info(cfg, state),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
@@ -1144,6 +1145,16 @@ class UIMixin:
             "logo_v": self.logo_version,
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
+
+    def _welcome_info(self, cfg: dict, state: dict) -> dict | None:
+        """First run only: what FCAC is going to change, so the user isn't surprised."""
+        if state.get("welcomed"):
+            return None
+        try:
+            fenix = str(airline_packs_dir(cfg))
+        except AppError:
+            fenix = ""
+        return {"fenix": fenix, "originals": str(GENERIC_DIR), "recordings": str(airlines_root(cfg))}
 
     def ui_logo(self, icao: str) -> tuple[bytes, str]:
         try:
@@ -1255,6 +1266,10 @@ class UIMixin:
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")
+        elif name == "welcomed":
+            state = load_state()
+            state["welcomed"] = True
+            save_state(state)
         elif name == "minimized":
             self.window_minimized()
         elif name == "closing":  # the window was closed: quit if that is what the user chose
@@ -1603,8 +1618,8 @@ class TrayApp(UIMixin):
             needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
         except AppError:
             needs_name = True  # first run: config.json was just created
-        if needs_name:
-            self.open_window()  # the window asks for the SimBrief username
+        if needs_name or not load_state().get("welcomed"):
+            self.open_window()  # first run: explain what FCAC changes, ask for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
         self.icon.run()

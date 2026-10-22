@@ -30,6 +30,27 @@ from fcac_fonts import INTER
 log = logging.getLogger("fcac")
 
 
+def work_area() -> tuple[int, int, int, int]:
+    """(left, top, width, height) of the usable desktop on Windows, in the units Chromium's window flags use."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+            return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    except Exception:
+        pass
+    return 0, 0, 1920, 1040
+
+
+def centered_geometry(width: int = 1040, height: int = 800) -> tuple[int, int, int, int]:
+    """Window size (shrunk to fit small screens) and the position that puts it in the middle of the screen."""
+    left, top, area_w, area_h = work_area()
+    width, height = min(width, area_w - 40), min(height, area_h - 40)
+    return left + (area_w - width) // 2, top + (area_h - height) // 2, width, height
+
+
 def _browser_candidates() -> list[Path]:
     roots = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
     parts = [("Microsoft", "Edge", "Application", "msedge.exe"), ("Google", "Chrome", "Application", "chrome.exe")]
@@ -145,8 +166,10 @@ class UIServer:
                 if exe.is_file():
                     try:
                         self.profile_dir.mkdir(parents=True, exist_ok=True)
+                        x, y, w, h = centered_geometry()
                         self.window = subprocess.Popen(
-                            [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", "--window-size=1040,780",
+                            [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
+                             f"--window-position={x},{y}",
                              "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
@@ -183,10 +206,11 @@ PAGE = r"""<!doctype html>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:radial-gradient(900px 500px at 8% -10%,rgba(107,47,214,.28),transparent 60%),
-     radial-gradient(800px 480px at 100% 0%,rgba(255,146,24,.14),transparent 60%),var(--bg);
+     radial-gradient(800px 480px at 100% 0%,rgba(255,146,24,.14),transparent 60%),var(--bg);background-attachment:fixed;
      color:var(--text);font:400 14px/1.5 'Inter',system-ui,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;
      font-feature-settings:'cv11','ss01'}
-.wrap{max-width:860px;margin:0 auto;padding:26px 28px 40px}
+.wrap{max-width:860px;margin:0 auto;padding:26px 28px 18px;min-height:100vh;display:flex;flex-direction:column}
+.verbar{margin-top:auto;padding-top:26px;text-align:center;font-size:12px;font-weight:500;color:var(--faint);letter-spacing:.04em}
 header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
 header img{width:46px;height:46px;border-radius:12px;box-shadow:0 6px 20px rgba(107,47,214,.45)}
 header h1{font-size:21px;font-weight:700;margin:0;letter-spacing:-.02em}
@@ -255,6 +279,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .chip2 button:hover{background:rgba(255,107,129,.18);color:var(--err)}
 .addrow{display:flex;align-items:center;gap:10px}
 .addrow input{width:96px;text-transform:uppercase;text-align:center;letter-spacing:.06em;font-weight:600}
+.facts{display:grid;gap:10px}
+.facts div{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:11px 14px;display:flex;flex-direction:column;gap:2px}
+.facts b{font-weight:600}
+.facts span{font:500 12px ui-monospace,Consolas,monospace;color:#d9b8ff;word-break:break-all}
+.facts i{font-style:normal;color:var(--muted);font-size:12.5px}
 .setting{margin-bottom:18px}
 .setting .label{margin-bottom:8px}
 .radios{display:grid;gap:8px}
@@ -301,7 +330,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
-  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="ver" style="margin-top:14px"></div><div class="small" id="lib" style="margin-top:4px"></div></div>
+  <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="lib" style="margin-top:14px"></div></div>
+  <div class="verbar" id="ver"></div>
 </div>
 
 <div class="modal" id="m-choice"><div class="dialog">
@@ -316,6 +346,19 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   <p>The name you log in to SimBrief with (not the numeric ID). FCAC reads your latest flight plan from it.</p>
   <input type="text" id="n-input" placeholder="e.g. sjames1066" autocomplete="off" spellcheck="false">
   <div class="row" style="margin-top:18px"><button class="ghost" id="n-cancel">Cancel</button><button class="primary" id="n-ok">Save</button></div>
+</div>
+</div>
+
+<div class="modal" id="m-welcome"><div class="dialog" style="width:520px">
+  <h3>Welcome to FCAC</h3>
+  <p>Before you start, here is what FCAC changes on this PC:</p>
+  <div class="facts">
+    <div><b>Your Fenix airline packs</b><span id="w-fenix"></span><i>FCAC replaces the welcome-aboard, arrival and refuelling announcements in these folders with the recording for your destination. Nothing else is touched.</i></div>
+    <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time FCAC changes a pack it saves a copy of the original files. Restore them at any time from the tray icon menu &rarr; Restore original announcements.</i></div>
+    <div><b>Your recordings</b><span id="w-rec"></span><i>Airline packs you install, and your own recordings, are stored here.</i></div>
+  </div>
+  <p class="small" style="margin:14px 0 18px">FCAC keeps running in the system tray (near the clock) and shows a notification each time it updates your announcements. Close this window whenever you like and open it again by double-clicking the tray icon.</p>
+  <div class="row"><button class="primary" id="w-ok">Got it</button></div>
 </div></div>
 
 <div class="modal" id="m-aliases"><div class="dialog" style="width:520px">
@@ -457,6 +500,16 @@ function renderAliases(){
   });
   const dl=$("#a-sources"); dl.replaceChildren(); (snap.alias_sources||[]).forEach(v=>{const o=document.createElement("option");o.value=v;dl.append(o)});
 }
+let welcomeShown=false;
+function renderWelcome(){
+  const w=snap.welcome, m=$("#m-welcome");
+  if(!w){m.classList.remove("show");return}
+  if(welcomeShown) return; welcomeShown=true;
+  $("#w-fenix").textContent=w.fenix||"(found automatically once you've installed an airline pack)";
+  $("#w-orig").textContent=w.originals; $("#w-rec").textContent=w.recordings;
+  m.classList.add("show");
+}
+$("#w-ok").onclick=async()=>{await api("welcomed");$("#m-welcome").classList.remove("show");snap.welcome=null};
 $("#aliases-btn").onclick=()=>{$("#m-aliases").classList.add("show");setTimeout(()=>$("#a-alias").focus(),50)};
 $("#a-done").onclick=()=>$("#m-aliases").classList.remove("show");
 $("#a-add").onclick=async()=>{
@@ -516,8 +569,8 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderPacks(); renderAliases(); renderPrompt();
-    if(snap.setup_needed&&!setupShown){setupShown=true;openName()}
+    renderHero(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    if(snap.setup_needed&&!snap.welcome&&!setupShown){setupShown=true;openName()}
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt))?500:1500);
 }

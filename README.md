@@ -76,7 +76,9 @@ loaded? Click **Update from SimBrief now** so it is picked up.
 
 ### The FCAC window
 
-Double-click the tray icon (or right-click -> **Open FCAC window**) for the main window: your latest SimBrief flight,
+On the very first run the window opens in the middle of your screen and explains which folders FCAC will change (your
+Fenix airline packs, with your originals kept safe) before you do anything. After that it lives in the tray and shows
+a notification each time it updates your announcements. Double-click the tray icon (or right-click -> **Open FCAC window**) for the main window: your latest SimBrief flight,
 every airline pack with its logo, one-click **Install / Update / Uninstall** with a progress bar, the auto-update
 switch and your SimBrief username. It also asks which recording to use when an airport has several. The first time
 you run FCAC it asks for your SimBrief username there.
