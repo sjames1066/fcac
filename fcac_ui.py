@@ -836,10 +836,21 @@ async function upload(slot,blob,name){
   catch(e){toast("Upload failed")}
   await refreshNow();
 }
-function play(c,slot){
-  if(playing){playing.pause();playing=null}
-  const a=newAudio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot,t:TOKEN,v:Date.now()}));playing=a;a.play().catch(()=>toast("Could not play that"));
+let player=null; // {id, audio}: the clip being played, paused or resumed
+function syncPlayer(){
+  document.querySelectorAll("#view-studio .pp").forEach(b=>{const on=player&&player.id===b.dataset.id,playingNow=on&&!player.audio.paused;
+    b.textContent=playingNow?"⏸":"▶";b.title=playingNow?"Pause":"Play"});
+  document.querySelectorAll("#view-studio .stp").forEach(b=>{b.style.display=player&&player.id===b.dataset.id?"":"none"});
 }
+function togglePlay(c,id){
+  if(player&&player.id===id){const a=player.audio;if(a.paused)a.play().catch(()=>{});else a.pause();syncPlayer();return}
+  stopPlay();
+  const a=newAudio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot:id,t:TOKEN,v:Date.now()}));
+  player={id,audio:a};["play","pause"].forEach(e=>a.addEventListener(e,syncPlayer));
+  a.addEventListener("ended",()=>{if(player&&player.audio===a)player=null;syncPlayer()});
+  a.play().then(syncPlayer).catch(()=>{player=null;syncPlayer();toast("Could not play that")});syncPlayer();
+}
+function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
   const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
@@ -850,7 +861,7 @@ function slotRow(c,r){
   if(r.music)rec.style.display="none";
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
   f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,f);
-  if(r.done){const p=el("button",null,"▶");p.title="Play";p.onclick=()=>play(c,r.id);const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,x)}
+  if(r.done){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,sp2,x)}
   d.append(act);return d;
 }
 function renderStudio(){
@@ -936,7 +947,7 @@ function renderStudio(){
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(c.origin?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
-  bar2.append(dis,fol,use,ex);root.append(bar2);
+  bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
 }
 
 function renderJob(){
