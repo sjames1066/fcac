@@ -232,6 +232,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .msg{margin-top:10px;font-size:13px;color:var(--muted)}
 .msg b{color:var(--text);font-weight:600}
 .hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
+.hero .company .ids{font-weight:500;color:var(--muted);letter-spacing:.02em}
+.hero .company .nm + .ids{margin-left:12px;padding-left:12px;border-left:1px solid var(--line2)}
 .hero .side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;text-align:right}
 .small{font-size:12px;color:var(--faint)}
 button{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);
@@ -441,7 +443,8 @@ function renderHero(){
   const mid=el("div"); mid.style.minWidth="0";
   mid.append(el("p","label","Your latest SimBrief flight"));
   if(f&&f.dest){
-    if(snap.company) mid.append(el("div","company",snap.company));
+    const ids=[f.number,f.callsign].filter(Boolean).join(" / ");
+    if(snap.company||ids){const c=el("div","company"); if(snap.company) c.append(el("span","nm",snap.company)); if(ids) c.append(el("span","ids",ids)); mid.append(c)}
     const r=el("div","route"); r.append(document.createTextNode(f.airline||"???"));
     r.append(el("span","arrow","→")); r.append(document.createTextNode(f.dest)); mid.append(r);
     if(f.name) mid.append(el("div","dest-name",f.name));

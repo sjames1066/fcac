@@ -456,7 +456,28 @@ def fetch_flight(cfg: dict) -> dict:
         "name": str(dest.get("name", "")).strip(),
         "airline": str((data.get("general") or {}).get("icao_airline", "")).strip().upper(),
         "arrival": arrival_clock(data),
+        **flight_labels(data),
     }
+
+
+# airline ICAO -> IATA, for showing "BA1336" when SimBrief only gives the ICAO code (a common few; SimBrief's own wins)
+IATA = {"BAW": "BA", "SHT": "BA", "CFE": "BA", "EFW": "BA", "AAL": "AA", "DAL": "DL", "UAL": "UA", "SWA": "WN",
+        "DLH": "LH", "AFR": "AF", "KLM": "KL", "RYR": "FR", "EZY": "U2", "UAE": "EK", "QTR": "QR", "ETD": "EY",
+        "VIR": "VS", "IBE": "IB", "SAS": "SK", "FIN": "AY", "SWR": "LX", "AUA": "OS", "THY": "TK", "QFA": "QF",
+        "ANZ": "NZ", "SIA": "SQ", "CPA": "CX", "JAL": "JL", "ANA": "NH", "KAL": "KE", "ACA": "AC", "WJA": "WS",
+        "JBU": "B6", "ASA": "AS", "NKS": "NK", "FFT": "F9", "WZZ": "W6", "VLG": "VY", "TAP": "TP", "EIN": "EI",
+        "NAX": "DY", "TVF": "TO", "EWG": "EW", "AZA": "AZ", "ITY": "AZ", "LOT": "LO", "CSA": "OK", "ELY": "LY"}
+
+
+def flight_labels(data: dict) -> dict:
+    """{"number": "BA1336", "callsign": "SHT12Q"} for the flight card (either may be empty)."""
+    general, atc = data.get("general") or {}, data.get("atc") or {}
+    icao = str(general.get("icao_airline", "")).strip().upper()
+    digits = str(general.get("flight_number", "")).strip().upper()
+    iata = str(general.get("iata_airline") or general.get("airline_iata") or IATA.get(icao, "")).strip().upper()
+    callsign = str(atc.get("callsign") or general.get("callsign") or "").strip().upper()
+    number = f"{iata or icao}{digits}" if digits else ""
+    return {"number": number, "callsign": callsign}
 
 
 def _number(value) -> float | None:
@@ -1041,7 +1062,8 @@ def restore_generic(cfg: dict, icao: str) -> str:
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
-    flight = {"icao": dest.upper(), "airline": "", "arrival": None} if dest else fetch_flight(cfg)
+    flight = {"icao": dest.upper(), "airline": "", "arrival": None, "number": "", "callsign": ""} if dest \
+        else fetch_flight(cfg)
     code = (airline or cfg.get("airline_override") or flight["airline"] or "").strip().upper()
     if not code:
         raise AppError("The SimBrief plan has no airline ICAO - set airline_override in config.json.")
@@ -1050,7 +1072,8 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
     key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}"  # a new landing time rebuilds the landing PA
     state = load_state()
-    shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", "")}
+    shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", ""),
+             "number": flight.get("number", ""), "callsign": flight.get("callsign", "")}
     if state.get("flight") != shown:
         state["flight"] = shown
         save_state(state)
