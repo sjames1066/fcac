@@ -421,6 +421,7 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .slot.reading .sc{font-size:20px;line-height:1.35;color:var(--text);padding:6px 0}
 .slot .sc.custom::before{content:"script · ";color:var(--magenta);font-size:12px}
 #m-mic select{width:100%}
+#view-studio>.section-head:not(:first-child){margin-top:30px}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
