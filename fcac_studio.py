@@ -22,6 +22,7 @@ DEFAULT_TARGET = -20.0     # LUFS, used when there are no original announcements
 MAX_UPLOAD = 60 * 1024 * 1024
 AUDIO_EXT = {".wav", ".ogg", ".mp3", ".m4a", ".flac", ".webm", ".opus", ".aac"}
 AIRPORT = re.compile(r"^[A-Z0-9]{4}(_[A-Z0-9]{1,8})?$")
+MUSIC_NAME = re.compile(r"^\w[\w .&'()-]{0,59}$")
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
 GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
@@ -108,7 +109,7 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
     except StudioError:
         pass
     project = {"icao": icao, "airline": airline[:80], "voice": voice[:40], "artist": "", "credit_url": "", "donate_url": "",
-               "accent": "", "description": "", "version": "1.0.0", "airports": [], "extras": [],
+               "accent": "", "description": "", "version": "1.0.0", "airports": [], "extras": [], "music": [],
                "effect": True, "slots": {}}
     save(root, project)
     return project
@@ -141,6 +142,10 @@ def slot_list(project: dict) -> list[dict]:
             "'Ladies and gentlemen, welcome to ' + the airport name")
     add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
+    for name in project.get("music", []):
+        add("Boarding music", "main", f"BoardingMusic~{name}", f"Track: {name}",
+            "Upload a track you have the rights to use. It is shown in the cabin crew panel under this name; no PA sound is applied.")
+        out[-1]["music"] = True
     for name in project.get("extras", []):
         add("Bolt-ons", "extra", name, f"Bolt-on: {name}", "A short announcement that is sometimes added to the welcome.")
     return out
@@ -208,7 +213,7 @@ def status(root: Path, project: dict) -> list[dict]:
         have = info is not None and (folder / "pack" / slot["folder"] / slot["file"]).is_file()
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
                 "custom": slot["id"] in project.get("scripts", {})}
-        rows.append({**slot, "done": have, "seconds": info.get("seconds") if have else None,
+        rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None})
     return rows
 
@@ -243,6 +248,20 @@ def add_airport(root: Path, project: dict, code: str) -> None:
 
 def remove_airport(root: Path, project: dict, code: str) -> None:
     project["airports"] = [c for c in project["airports"] if c != code]
+    save(root, project)
+
+
+def add_music(root: Path, project: dict, name: str) -> None:
+    name = name.strip()
+    if not MUSIC_NAME.match(name):
+        raise StudioError("Name the track with letters, digits, spaces or . & ' ( ) - (e.g. Departure lounge).")
+    if name.lower() not in [n.lower() for n in project.setdefault("music", [])]:
+        project["music"].append(name)
+    save(root, project)
+
+
+def remove_music(root: Path, project: dict, name: str) -> None:
+    project["music"] = [n for n in project.get("music", []) if n != name]
     save(root, project)
 
 
@@ -285,8 +304,11 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
     if not raws:
         raise StudioError("Nothing recorded for that yet.")
     try:
-        result = fcac_audio.process_clip(raws[0], folder / "pack" / slot["folder"] / slot["file"], target,
-                                         bool(project.get("effect", True)))
+        if slot.get("music"):
+            result = fcac_audio.convert_music(raws[0], folder / "pack" / slot["folder"] / slot["file"])
+        else:
+            result = fcac_audio.process_clip(raws[0], folder / "pack" / slot["folder"] / slot["file"], target,
+                                             bool(project.get("effect", True)))
     except fcac_audio.AudioError as exc:
         raise StudioError(str(exc))
     result["target"] = target
@@ -298,7 +320,7 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
 def reprocess_all(root: Path, project: dict, target: float) -> int:
     count = 0
     for slot in slot_list(project):
-        if slot["id"] in project.get("slots", {}):
+        if slot["id"] in project.get("slots", {}) and not slot.get("music"):
             try:
                 process_slot(root, project, slot, target)
                 count += 1
@@ -366,5 +388,10 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     if not src.is_dir() or not any(src.rglob("*.ogg")):
         raise StudioError("Record something first.")
     shutil.copytree(src, dest, dirs_exist_ok=True)
+    music = sorted((src / "main").glob("BoardingMusic*.ogg"))
+    if music:  # boarding music is the airline's, not a voice's: it goes where FCAC copies the general PAs from
+        (airline_dir / "main").mkdir(parents=True, exist_ok=True)
+        for path in music:
+            shutil.copyfile(path, airline_dir / "main" / path.name)
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
     return dest

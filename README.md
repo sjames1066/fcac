@@ -291,3 +291,5 @@ Fenix announcement types (BoardingComplete, ArmDoors, CrewTakeSeats, CabinDim, S
 Time-of-day tags follow Fenix: Night 00:00-06:00, Morning 06:00-12:00, Afternoon 12:00-18:00, Evening 18:00-24:00. A `BoardingWelcome[Night]` clip in `main` is built with `time\Welcome_Night.ogg` (or `Welcome_Evening.ogg` if you did not record one).
 
 Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landing PA ("...four thirty-five P.M.") when present.
+
+**Boarding music:** in the Studio's *Boarding music* group, name a track and upload it (no recording, no PA sound). It is saved as `main\BoardingMusic~<Track name>.ogg`, which FCAC copies into the Fenix pack; the cabin crew panel lists it under that name. Use only music you have the right to share.

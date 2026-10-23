@@ -1689,7 +1689,7 @@ class UIMixin:
                 "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
-                "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"],
+                "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
                 "has_script": bool(project.get("scripts")), "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
@@ -1757,6 +1757,8 @@ class UIMixin:
                 return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
             elif name == "airport":
                 (fcac_studio.remove_airport if data.get("remove") else fcac_studio.add_airport)(STUDIO_DIR, project, str(data.get("code", "")))
+            elif name == "music":
+                (fcac_studio.remove_music if data.get("remove") else fcac_studio.add_music)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "extra":
                 (fcac_studio.remove_extra if data.get("remove") else fcac_studio.add_extra)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "delete":

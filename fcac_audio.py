@@ -250,3 +250,17 @@ def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) 
     return {"seconds": round(len(data) / rate, 2),
             "lufs_in": None if lufs_in is None else round(lufs_in, 1),
             "lufs_out": None if lufs_out is None else round(lufs_out, 1)}
+
+
+def convert_music(src: Path, dst: Path) -> dict:
+    """Boarding music: no PA sound, no loudness change. An .ogg is copied as it is; anything else is converted."""
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    data, rate = _read(src)
+    if src.suffix.lower() == ".ogg":
+        shutil.copyfile(src, dst)
+    else:
+        _write(dst, data, rate)
+    lufs = loudness_lufs(data, rate)
+    return {"seconds": round(len(data) / rate, 1), "lufs_in": None if lufs is None else round(lufs, 1),
+            "lufs_out": None if lufs is None else round(lufs, 1), "music": True}

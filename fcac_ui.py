@@ -839,10 +839,11 @@ function play(c,slot){
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
   const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
-  if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom?r.script:"Say: "+r.script));
-  if(r.done)d.append(el("div","st",r.seconds+" s · "+r.lufs+" LUFS"));
+  if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom||r.music?r.script:"Say: "+r.script));
+  if(r.done)d.append(el("div","st",r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
+  if(r.music)rec.style.display="none";
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
   f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,f);
   if(r.done){const p=el("button",null,"▶");p.title="Play";p.onclick=()=>play(c,r.id);const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,x)}
@@ -893,8 +894,8 @@ function renderStudio(){
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["General announcements","Greetings and clock","Airports","Refuelling","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["General announcements","Greetings and clock","Airports","Refuelling","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done).length+"/"+gr.rows.length));d.append(sm);
@@ -904,6 +905,13 @@ function renderStudio(){
       add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok)openGroups.add("Airports");studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
       if(c.airports.length){const cr=el("div","chiprow");c.airports.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("airport",{...pid(c),code:a,remove:true});cr.append(b)});d.append(cr)}
+    }
+    if(gr.name==="Boarding music"){
+      d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
+      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Departure lounge";const add=el("button",null,"Add track");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("music",{...pid(c),name:i.value});if(r.ok)openGroups.add("Boarding music");studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      if(c.music.length){const cr=el("div","chiprow");c.music.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("music",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
     if(gr.name==="Bolt-ons"){
       d.append(el("div","small","Short announcements FCAC sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
