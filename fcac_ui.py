@@ -537,10 +537,13 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 </div></div>
 
 <div class="modal" id="m-mic"><div class="dialog">
-  <h3>Microphone</h3><p>Pick your microphone, speak normally and keep the bar in the green.</p>
+  <h3>Audio settings</h3><p>Pick your microphone, speak normally and keep the bar in the green.</p>
   <div class="label small">Input device</div><select id="mic-dev" class="voice" style="width:100%;margin:6px 0 14px"></select>
   <div class="label small">Input boost <span id="mic-gv"></span></div><input type="range" id="mic-gain" min="-12" max="18" step="1" style="width:100%">
   <div class="meter"><i id="mic-bar"></i><b id="mic-peak"></b></div><div class="small" id="mic-msg">Starting the microphone...</div>
+  <div class="label small" style="margin-top:14px">Playback device (for the play and test buttons)</div><select id="out-dev" class="voice" style="width:100%;margin:6px 0 14px"></select>
+  <div class="label small">Playback volume <span id="out-gv"></span></div><input type="range" id="out-vol" min="0" max="100" step="5" style="width:100%">
+  <div class="small" style="margin-top:6px">Windows lists FCAC in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
 <div class="toast" id="toast"></div>
@@ -757,7 +760,7 @@ function wavBlob(chunks,rate){
   return new Blob([buf],{type:"audio/wav"});
 }
 // ---- microphone settings (kept in this window's browser storage) ----
-function micPrefs(){try{return Object.assign({device:"",gain:0},JSON.parse(localStorage.getItem("fcacMic")||"{}"))}catch(e){return{device:"",gain:0}}}
+function micPrefs(){try{return Object.assign({device:"",gain:0,out:"",vol:100},JSON.parse(localStorage.getItem("fcacMic")||"{}"))}catch(e){return{device:"",gain:0}}}
 function micSave(p){try{localStorage.setItem("fcacMic",JSON.stringify(p))}catch(e){}}
 async function micStream(){
   const p=micPrefs(), a={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};
@@ -766,6 +769,7 @@ async function micStream(){
   catch(e){if(p.device){micSave({...p,device:""});return await navigator.mediaDevices.getUserMedia({audio:{...a,deviceId:undefined}})}throw e}
 }
 let micCtx=null, micTimer=null, micStreamNow=null;
+function newAudio(url){const a=new Audio(url),p=micPrefs();a.volume=Math.max(0,Math.min(1,p.vol/100));if(p.out&&a.setSinkId)a.setSinkId(p.out).catch(()=>{});return a}
 async function micStop(){clearInterval(micTimer);micTimer=null;if(micStreamNow){micStreamNow.getTracks().forEach(t=>t.stop());micStreamNow=null}if(micCtx){try{await micCtx.close()}catch(e){}micCtx=null}}
 async function micStart(){
   await micStop();const msg=$("#mic-msg"),p=micPrefs();
@@ -774,6 +778,9 @@ async function micStart(){
   const cur=micStreamNow.getAudioTracks()[0].getSettings().deviceId;
   devs.forEach(d=>{const o=el("option",null,d.label||"Microphone");o.value=d.deviceId;sel.append(o)});sel.value=p.device&&devs.some(d=>d.deviceId===p.device)?p.device:cur;
   $("#mic-gain").value=p.gain;$("#mic-gv").textContent=(p.gain>0?"+":"")+p.gain+" dB";
+  const outs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audiooutput"),os=$("#out-dev");os.textContent="";
+  outs.forEach(d=>{const o=el("option",null,d.label||"Speakers");o.value=d.deviceId;os.append(o)});os.value=p.out&&outs.some(d=>d.deviceId===p.out)?p.out:(outs[0]?outs[0].deviceId:"");
+  os.disabled=!("setSinkId" in HTMLMediaElement.prototype);$("#out-vol").value=p.vol;$("#out-gv").textContent=p.vol+"%";
   micCtx=new (window.AudioContext||window.webkitAudioContext)();const an=micCtx.createAnalyser();an.fftSize=1024;micCtx.createMediaStreamSource(micStreamNow).connect(an);
   const buf=new Float32Array(an.fftSize);let peak=0,hold=0,clip=0;
   micTimer=setInterval(()=>{an.getFloatTimeDomainData(buf);const g=Math.pow(10,micPrefs().gain/20);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v)*g);
@@ -785,11 +792,13 @@ async function micStart(){
 }
 function openMic(){$("#m-mic").classList.add("show");micStart()}
 $("#mic-dev").onchange=()=>{micSave({...micPrefs(),device:$("#mic-dev").value});micStart()};
+$("#out-dev").onchange=()=>micSave({...micPrefs(),out:$("#out-dev").value});
+$("#out-vol").oninput=()=>{const v=+$("#out-vol").value;micSave({...micPrefs(),vol:v});$("#out-gv").textContent=v+"%"};
 $("#mic-gain").oninput=()=>{const g=+$("#mic-gain").value;micSave({...micPrefs(),gain:g});$("#mic-gv").textContent=(g>0?"+":"")+g+" dB"};
 $("#mic-done").onclick=async()=>{await micStop();$("#m-mic").classList.remove("show")};
 $("#mic-test").onclick=async()=>{
   const b=$("#mic-test");if(b.disabled)return;b.disabled=true;
-  try{const rec=await recordClip(3000,t=>b.textContent="Recording... "+Math.ceil(t)+" s");b.textContent="Playing back...";const url=URL.createObjectURL(rec);const a=new Audio(url);a.onended=()=>{b.disabled=false;b.textContent="Test: record 3 s and play back"};a.play()}
+  try{const rec=await recordClip(3000,t=>b.textContent="Recording... "+Math.ceil(t)+" s");b.textContent="Playing back...";const url=URL.createObjectURL(rec);const a=newAudio(url);a.onended=()=>{b.disabled=false;b.textContent="Test: record 3 s and play back"};a.play()}
   catch(e){toast("Could not record - check the microphone");b.disabled=false;b.textContent="Test: record 3 s and play back"}
 };
 async function recordClip(ms,tick){ // records for ms from the chosen microphone with the chosen boost; returns a WAV blob
@@ -825,7 +834,7 @@ async function upload(slot,blob,name){
 }
 function play(c,slot){
   if(playing){playing.pause();playing=null}
-  const a=new Audio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot,t:TOKEN,v:Date.now()}));playing=a;a.play().catch(()=>toast("Could not play that"));
+  const a=newAudio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot,t:TOKEN,v:Date.now()}));playing=a;a.play().catch(()=>toast("Could not play that"));
 }
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
@@ -861,7 +870,7 @@ function renderStudio(){
   const top=el("div","section-head");const back=el("button","ghost","← All packs");back.onclick=()=>studio("close");
   top.append(back,el("h2",null,c.airline+" · "+c.voice+" ("+c.icao+")"));
   const sp=el("span");sp.style.cssText="margin-left:auto;display:flex;gap:8px";
-  const mic=el("button",null,"🎤 Mic settings");mic.onclick=openMic;
+  const mic=el("button",null,"🎧 Audio settings");mic.onclick=openMic;
   const sf=el("input");sf.type="file";sf.accept=".txt,.json,.csv,.md";sf.style.display="none";
   sf.onchange=async()=>{const f=sf.files[0];if(!f)return;const r=await studio("script",{...pid(c),text:await f.text()});if(r.ok)toast("Script loaded - "+r.matched+" clips"+(r.skipped?" ("+r.skipped+" lines did not match)":""))};
   const su=el("button",null,c.has_script?"Replace script":"Upload script");su.title="A text or JSON file with lines like  Hour 4: Four  - shown while you record";su.onclick=()=>sf.click();
