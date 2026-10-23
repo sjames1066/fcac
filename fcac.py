@@ -794,13 +794,16 @@ def pack_tags(filename: str) -> set[str]:
     return {t.lower() for t in re.findall(r"\[([^\]]+)\]", filename)}
 
 
-def target_names(pristine: Path | None, mapping: dict) -> list[str]:
+def target_names(pristine: Path | None, mapping: dict, also: Path | None = None) -> list[str]:
     """Pack files this mapping replaces: every variant of the base name that passes the tag rules."""
     require = {t.lower() for t in mapping.get("require_tags", [])}
     exclude = {t.lower() for t in mapping.get("exclude_tags", [])}
     names = []
-    for path in sorted(pristine.iterdir()) if pristine else []:
-        if not path.is_file() or path.suffix.lower() != ".ogg":
+    files = sorted(pristine.iterdir()) if pristine else []
+    if also and also.is_dir():   # a voice's own generics can add variants the original pack lacks (e.g. [Night])
+        files += sorted(also.iterdir())
+    for path in files:
+        if not path.is_file() or path.suffix.lower() != ".ogg" or path.name in names:
             continue
         if re.split(r"[\[~]", path.stem, maxsplit=1)[0] != mapping["base"]:
             continue
@@ -1072,14 +1075,22 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
     # destination (SafetyBriefing, ArmDoors...): copy any that are new or changed into the Fenix pack.
     synced = 0
-    if pristine == lib_dir / MAIN_FOLDER and not only:
-        managed = {name for m in cfg["mappings"] for name in target_names(pristine, m)}
-        for path in sorted(pristine.iterdir()):
-            if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name):
-                dst = fenix_dir / path.name
-                if not dst.is_file() or not filecmp.cmp(path, dst, shallow=False):
-                    install_file(path, dst)
-                    synced += 1
+    voice_main = voice_dir / MAIN_FOLDER
+    own_main = voice_main if voice_main != lib_dir / MAIN_FOLDER and has_ogg(voice_main) else None   # a voice with its own full set of PAs
+    if not only and (pristine == lib_dir / MAIN_FOLDER or own_main):
+        managed = {name for m in cfg["mappings"] for name in target_names(pristine, m, own_main)}
+        sources: dict[str, Path] = {}
+        for folder in (lib_dir / MAIN_FOLDER if pristine == lib_dir / MAIN_FOLDER else None, own_main):   # the voice's files win
+            if folder is None:
+                continue
+            for path in sorted(folder.iterdir()):
+                if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name):
+                    sources[path.name] = path
+        for name, path in sources.items():
+            dst = fenix_dir / name
+            if not dst.is_file() or not filecmp.cmp(path, dst, shallow=False):
+                install_file(path, dst)
+                synced += 1
 
     all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
     all_clips[AIRPORTS_FOLDER] = find_clips(voice_dir, AIRPORTS_FOLDER, source, dest_icao)  # just the airport's name
@@ -1127,8 +1138,9 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             if extra:
                 log.info("Bolt-on for this flight: %s", extra.stem)
             built = 0
-            for name in target_names(pristine, mapping):
-                dst, generic = fenix_dir / name, (pristine / name if pristine else None)
+            for name in target_names(pristine, mapping, own_main):
+                dst = fenix_dir / name
+                generic = own_main / name if own_main and (own_main / name).is_file() else (pristine / name if pristine else None)
                 pieces = None
                 if joined and clip:
                     if folder == "dest":
