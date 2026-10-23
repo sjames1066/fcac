@@ -801,7 +801,7 @@ def target_names(pristine: Path | None, mapping: dict) -> list[str]:
     for path in sorted(pristine.iterdir()) if pristine else []:
         if not path.is_file() or path.suffix.lower() != ".ogg":
             continue
-        if path.stem.split("[", 1)[0] != mapping["base"]:
+        if re.split(r"[\[~]", path.stem, maxsplit=1)[0] != mapping["base"]:
             continue
         tags = pack_tags(path.name)
         if require <= tags and not (exclude & tags):

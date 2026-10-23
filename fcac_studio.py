@@ -24,15 +24,30 @@ AUDIO_EXT = {".wav", ".ogg", ".mp3", ".m4a", ".flac", ".webm", ".opus", ".aac"}
 AIRPORT = re.compile(r"^[A-Z0-9]{4}(_[A-Z0-9]{1,8})?$")
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
-GENERAL = [  # (file name, label, what to say)
+GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
     ("Modular_Welcome", "Welcome aboard - the rest", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
     ("Modular_Landing", "Landing - the rest", "Everything in the landing PA after the local time: cabin crew seats, seatbelt sign, belongings, thank you..."),
-    ("SafetyBriefing", "Safety briefing", "The full safety briefing."),
-    ("AfterLanding", "After landing (generic)", "Generic 'welcome to our destination' PA, used where an airport has no recording."),
-    ("BoardingWelcome[Morning]", "Boarding welcome - morning (generic)", "Generic welcome aboard, good morning."),
-    ("BoardingWelcome[Afternoon]", "Boarding welcome - afternoon (generic)", "Generic welcome aboard, good afternoon."),
-    ("BoardingWelcome[Evening]", "Boarding welcome - evening (generic)", "Generic welcome aboard, good evening."),
-    ("BoardingWelcome[Refueling]", "Boarding welcome - refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
+    ("BoardingWelcome[Morning]", "BoardingWelcome - morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
+    ("BoardingWelcome[Afternoon]", "BoardingWelcome - afternoon (generic)", "Generic welcome aboard, good afternoon."),
+    ("BoardingWelcome[Evening]", "BoardingWelcome - evening (generic)", "Generic welcome aboard, good evening."),
+    ("BoardingWelcome[Refueling]", "BoardingWelcome - refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
+    ("BoardingComplete", "BoardingComplete", "The purser announces that boarding has completed."),
+    ("ArmDoors", "ArmDoors", "Cabin crew, arm doors and cross-check."),
+    ("DisarmDoors", "DisarmDoors", "Cabin crew, disarm doors and cross-check."),
+    ("PreSafetyBriefing", "PreSafetyBriefing", "The opening of the safety briefing, before the demonstration."),
+    ("SafetyBriefing", "SafetyBriefing", "The safety demonstration."),
+    ("CrewTakeSeats", "CrewTakeSeats", "Cabin crew, take your seats for takeoff / landing."),
+    ("CabinDim", "CabinDim", "We will dim the cabin lights for takeoff / landing."),
+    ("CabinSecured", "CabinSecured", "Interphone to the cockpit: cabin secure for takeoff / landing."),
+    ("AfterTakeoff", "AfterTakeoff", "PA after takeoff, once past acceleration altitude."),
+    ("SeatbeltSignOn", "SeatbeltSignOn", "The seatbelt signs have been switched on."),
+    ("SeatbeltSignOff", "SeatbeltSignOff", "The seatbelt signs have been switched off."),
+    ("CabinService", "CabinService", "Cabin service is about to begin."),
+    ("DescentStarted", "DescentStarted", "We have started our descent."),
+    ("AfterLanding", "AfterLanding (generic)", "Generic 'welcome to our destination', used where an airport has no recording."),
+    ("DeboardingStarted", "DeboardingStarted", "Passengers may now disembark."),
+    ("DeboardingComplete", "DeboardingComplete", "Deboarding has completed."),
+    ("Decompression", "Decompression", "Oxygen masks have deployed - emergency descent instructions."),
 ]
 GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentlemen"),
              ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen"),
