@@ -234,6 +234,9 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
 .hero .company .ids{font-weight:500;color:var(--muted);letter-spacing:.02em}
 .hero .company .nm + .ids{margin-left:12px;padding-left:12px;border-left:1px solid var(--line2)}
+.debug{margin:-12px 0 22px;padding:12px 16px;border:1px solid rgba(255,93,93,.45);border-radius:14px;background:rgba(255,93,93,.07);
+       color:#ff6b6b;font:12px/1.55 Consolas,'Cascadia Mono',monospace;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
+.debug::before{content:"DEBUG - hidden in the release build";display:block;font:700 10px 'Inter',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#ff4d4d;margin-bottom:6px}
 .voicerow{display:flex;align-items:center;gap:10px}
 select.voice{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:9px 12px;cursor:pointer;color-scheme:dark}
 select.voice:disabled{opacity:.45}
@@ -324,6 +327,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
   </header>
 
   <section class="card hero" id="hero"></section>
+  <pre id="debug" class="debug" style="display:none"></pre>
 
   <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
@@ -402,6 +406,12 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
       <div class="radio" data-v="yes"><b>Say the local time</b><span>"&hellip;where the local time is four thirty-five", read from the sim once you have landed</span></div>
       <div class="radio" data-v="no"><b>Leave it out</b><span>The landing announcement goes straight on without the time</span></div>
     </div></div>
+  <div class="setting"><div class="label">Extra announcements (nut allergy, Wi-Fi down...)</div>
+    <div class="radios" id="s-extra">
+      <div class="radio" data-v="0"><b>Never</b><span>The welcome announcement is always the same</span></div>
+      <div class="radio" data-v="25"><b>Now and then</b><span>About one flight in four gets a random bolt-on from your extra folder</span></div>
+      <div class="radio" data-v="50"><b>Often</b><span>About one flight in two</span></div>
+    </div></div>
   <div class="setting"><div class="label">Start FCAC automatically</div>
     <div class="radios" id="s-start">
       <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
@@ -428,6 +438,11 @@ async function api(name,data){
 function toast(t){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),3200)}
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
+function renderDebug(){
+  const d=$("#debug"); if(!snap.debug||!snap.debug.length){d.style.display="none";return}
+  const text=snap.debug.join("\n"); if(d.dataset.t===text) return; d.dataset.t=text;
+  d.style.display="block"; d.textContent=text; d.scrollTop=d.scrollHeight;
+}
 let heroSig="";
 function renderHero(){
   const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
@@ -555,14 +570,14 @@ function renderPrompt(){
 $("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
-let cfg={on_close:"tray",autostart:"off",min:"no",time:"yes"};
+let cfg={on_close:"tray",autostart:"off",min:"no",time:"yes",extra:"25"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes"};
+  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance)};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time);
+  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#m-settings").classList.add("show");
 }
@@ -571,7 +586,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),quit_with_msfs:$("#s-quit").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
@@ -593,7 +608,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderDebug(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
     if(snap.setup_needed&&!snap.welcome&&!setupShown){setupShown=true;openName()}
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt))?500:1500);

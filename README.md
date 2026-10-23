@@ -10,7 +10,7 @@ click**, and removed the same way.
 ## The Airlines folder
 
 Your recordings live in an `Airlines` folder next to the app (for example `C:\FCAC\Airlines`), one folder per airline
-ICAO code, each with `main`, `dep`, `dest` and `fuel` inside:
+ICAO code, each with `main`, `dep`, `dest`, `time`, `fuel` and `extra` inside (see Modular announcements below):
 
 ```
 C:\FCAC\
@@ -18,12 +18,14 @@ C:\FCAC\
   config.json
   Airlines\
     BAW\
-      main\   SafetyBriefing.ogg  ArmDoors.ogg ...   <- general PAs
-      dep\    BAW_BIKF.ogg  BAW_EGLL.ogg  ...     <- welcome aboard
-      dest\   BAW_BIKF.ogg  ...                    <- welcome to your destination
-      fuel\   BAW_BIKF.ogg  ...                    <- boarding while refuelling
+      main\   SafetyBriefing.ogg  ArmDoors.ogg  Modular_Welcome.ogg ...   <- unmodified PAs
+      dep\    BAW_BIKF.ogg  BAW_EGLL.ogg  ...     <- welcome aboard (airport name)
+      dest\   BAW_BIKF.ogg  ...                    <- landing PA (welcome to your destination)
+      time\   Welcome_Morning.ogg  Hour_04.ogg  Min_35.ogg ...   <- greetings and local time
+      fuel\   Fuel_Tag.ogg                         <- said while refuelling
+      extra\  Nut_Allergy.ogg  WiFi_Unavailable.ogg ...   <- random bolt-ons
     AAL\
-      main\  dep\  dest\  fuel\
+      main\  dep\  dest\  time\  fuel\  extra\
 ```
 
 Name each recording `<AIRLINE>_<destination ICAO>.ogg`. The destination is the ICAO code of where the flight is going.
@@ -34,6 +36,8 @@ asking which you prefer (the plain file is listed as "Standard"). Tick **Remembe
 being asked; **Forget remembered terminal choices** in the tray menu clears that. If `dep` has a `_T5` file but `dest`
 doesn't, `dest` uses its plain file (or the original) for that flight. Closing the window picks the first option.
 From the command line: `--once --airline BAW --dest EGLL --variant T5`.
+
+Without the modular files, `dep`, `dest` and `fuel` hold whole PAs, each replacing a Fenix pack file:
 
 | Folder | Replaces in the Fenix pack | Used for |
 |--------|----------------------------|----------|
@@ -53,53 +57,60 @@ From the command line: `--once --airline BAW --dest EGLL --variant T5`.
 - The mapping is the `mappings` list in `config.json` if you ever want to change it. `airlines_dir` in `config.json`
   moves the Airlines folder somewhere else.
 
-## Joined announcements (optional): the `parts` folder
+## Modular announcements
 
-Instead of recording a whole PA for every airport, record the airport-specific bit once and share the rest. Put these
-shared pieces in `Airlines\BAW\parts` (names are not case-sensitive). When they are there, FCAC joins the pieces into
-the full announcement and puts that in the Fenix pack.
+Instead of recording a whole PA for every airport, record the airport-specific bit once and share the rest. FCAC
+joins the pieces into the full announcement and puts that in the Fenix pack. The folders in `Airlines\<ICAO>`:
 
-**Welcome aboard** = greeting + destination + rest:
+| Folder | What goes in it |
+|--------|-----------------|
+| `main` | the airline's unmodified PAs, plus `Modular_Welcome.ogg` and `Modular_Landing.ogg` (the "rest of the PA", named differently from the generic BoardingWelcome / AfterLanding so you can tell them apart). The modular files are never copied into the Fenix pack. |
+| `dep`  | `<AIRLINE>_<ICAO>.ogg`, just the airport name for the welcome aboard ("London Heathrow") |
+| `dest` | `<AIRLINE>_<ICAO>.ogg`, the opening of the landing PA ("Ladies and gentlemen, welcome to London Heathrow") |
+| `time` | the greetings and the local-time clips (below) |
+| `fuel` | a tag-on said while refuelling ("We are currently refuelling...") |
+| `extra` | bolt-ons: "nut allergy on board", "Wi-Fi is unavailable"... |
 
-| Piece | Where | Example |
-|-------|-------|---------|
-| `Welcome_Morning.ogg`, `Welcome_Afternoon.ogg`, `Welcome_Evening.ogg` | `parts` | "Good morning, ladies and gentlemen, welcome aboard this flight to" |
-| `BAW_EGLL.ogg` | `dep` | "London Heathrow" |
-| `Welcome_Rest.ogg` | `parts` | everything after the destination |
+**Welcome aboard** = greeting (`time\Welcome_Morning` / `Welcome_Afternoon` / `Welcome_Evening`) + `dep` airport +
+`Modular_Welcome`. FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
 
-FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
+**Refuelling.** Fenix plays its `BoardingWelcome[Refueling]` file while the aircraft is being refuelled, so FCAC builds
+that file as the same welcome plus the `fuel` tag-on. No sim detection is needed. Its greeting follows your PC clock.
 
-**Landing** = welcome to destination + local time + rest:
+**Extras.** About one flight in four (Settings: Never / Now and then / Often, or `extra_chance` in `config.json`) gets
+one random file from `extra` added to the end of the welcome PA. It is chosen once per flight, so rebuilding the PA
+(a voice change) keeps the same one.
 
-| Piece | Where | Example |
-|-------|-------|---------|
-| `BAW_EGLL.ogg` | `dest` | "Ladies and gentlemen, welcome to London Heathrow" |
-| `LocalTime.ogg` | `parts` | "where the local time is" |
-| `Hour_01.ogg` ... `Hour_12.ogg` | `parts` | "four" (12-hour clock: 16:35 is "four thirty-five"; 00:xx and 12:xx both use `Hour_12`) |
-| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | `parts` | "thirty-five" (`Min_00`, e.g. "o'clock", is optional) |
-| `Landing_Rest.ogg` | `parts` | everything after the time |
+**Landing** = `dest` airport + `time\LocalTime` + `Hour_NN` + `Min_NN` + `Modular_Landing`:
+
+| Piece (in `time`) | Example |
+|-------------------|---------|
+| `LocalTime.ogg` | "where the local time is" |
+| `Hour_01.ogg` ... `Hour_12.ogg` | "four" (12-hour clock: 16:35 is "four thirty-five"; 00:xx and 12:xx both use `Hour_12`) |
+| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | "thirty-five" (`Min_00`, e.g. "o'clock", is optional) |
 
 The time is rounded to the nearest 5 minutes. If a time piece is missing, the time is left out and the rest still plays.
-Without `Welcome_Rest` / `Landing_Rest`, the `dep` and `dest` recordings are used whole, exactly as before.
+Without `Modular_Welcome` / `Modular_Landing`, the `dep` and `dest` recordings are used whole, exactly as before. (The
+old `parts` folder name, `Welcome_Rest.ogg` and `Landing_Rest.ogg` still work.)
 
 **Live local time.** FCAC watches MSFS (SimConnect). When you have landed and slowed to 60 knots ground speed
 (`landing_speed_knots` in `config.json`), it reads the local time at that airport from the sim and rebuilds the landing
 PA with it. Before that, the landing PA uses SimBrief's planned landing time at the destination so something sensible is
 there. A touch-and-go builds nothing. `segment_pause_ms` (default 60) is the pause left between joined pieces.
-Turn the spoken time off in **Settings** (or `"announce_local_time": false` in `config.json`): the landing PA then goes from the airport welcome straight to the rest.
+Turn the spoken time off in **Settings** (or `"announce_local_time": false` in `config.json`).
 
 ## Several voices for one airline
 
 Put each extra voice artist in its own folder under the airline's `voices` folder. Each voice is laid out like the
-airline folder itself (its own `parts`, `dep`, `dest` and `fuel`):
+airline folder itself (its own `dep`, `dest`, `time`, `fuel` and `extra`, plus the `Modular_` files in its own `main`):
 
 ```
 Airlines\BAW\
-  main\            general PAs, shared by every voice
-  dep\ dest\ parts\   the "Default" voice (whatever is directly in the airline folder)
+  main\                        general PAs, shared by every voice
+  dep\ dest\ time\ fuel\ extra\   the "Default" voice (whatever is directly in the airline folder)
   voices\
-    James\   dep\  dest\  fuel\  parts\
-    Emma\    dep\  dest\  fuel\  parts\
+    James\   main\ dep\ dest\ time\ fuel\ extra\
+    Emma\    main\ dep\ dest\ time\ fuel\ extra\
 ```
 
 When an airline has more than one voice, a **Voice** drop-down appears next to **Update now** in the flight card: pick

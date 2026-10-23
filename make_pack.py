@@ -11,7 +11,9 @@ Build an airline pack zip for FCAC and add it to your catalog.json.
 
 The zip contains:
     main/   the airline's general PAs (copied to ...\\AirlinePacks\\<ICAO> and kept in Airlines\\<ICAO>\\main)
-    parts/  optional shared pieces FCAC joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_14.ogg ...)
+    time/   greetings and local-time clips FCAC joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_04.ogg ...)
+    extra/  bolt-on announcements, one of which is sometimes added to the welcome PA
+    voices/ optional extra voice artists, each laid out like the airline folder
     dep/    <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome
     dest/   <ICAO>_<destination ICAO>.ogg   -> replaces AfterLanding
     fuel/   <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome[Refueling]
@@ -57,7 +59,8 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--airline-dir", type=Path, help="your Airlines\\<ICAO> folder (main, dep, dest, fuel)")
     parser.add_argument("--main", "--pack", dest="main", type=Path, help="folder of the airline's general PA .ogg files")
-    parser.add_argument("--parts", type=Path, help="folder of shared PA pieces (Welcome_*, Landing_Rest, Hour_*, Min_* ...)")
+    parser.add_argument("--time", dest="time_dir", type=Path, help="folder of greetings and local-time clips (Welcome_Morning, Hour_01, Min_35 ...)")
+    parser.add_argument("--extra", type=Path, help="folder of bolt-on announcements (nut allergy, Wi-Fi unavailable ...)")
     parser.add_argument("--voices", type=Path, help="folder with one sub-folder per extra voice artist (each like the airline folder)")
     parser.add_argument("--dep", type=Path, help="folder of <ICAO>_<dest>.ogg for the welcome aboard")
     parser.add_argument("--dest", type=Path, help="folder of <ICAO>_<dest>.ogg for the arrival welcome")
@@ -75,14 +78,15 @@ def main() -> int:
         print("ERROR: --icao must be a 3-character airline code", file=sys.stderr)
         return 1
     if args.airline_dir:  # fill anything not given explicitly from the Airlines\<ICAO> folder
-        for label in ("main", "parts", "voices", "dep", "dest", "fuel"):
+        for label, attr in (("main", "main"), ("time", "time_dir"), ("parts", "time_dir"), ("extra", "extra"),
+                            ("voices", "voices"), ("dep", "dep"), ("dest", "dest"), ("fuel", "fuel")):
             candidate = args.airline_dir / label
-            if getattr(args, label) is None and candidate.is_dir():
-                setattr(args, label, candidate)
+            if getattr(args, attr) is None and candidate.is_dir():
+                setattr(args, attr, candidate)
     if args.main is None:
         print("ERROR: no main folder. Give --main, or put the general PAs in <airline-dir>\\main", file=sys.stderr)
         return 1
-    for label, folder in (("main", args.main), ("parts", args.parts), ("voices", args.voices), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
+    for label, folder in (("main", args.main), ("time", args.time_dir), ("extra", args.extra), ("voices", args.voices), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
         if folder is not None and not folder.is_dir():
             print(f"ERROR: --{label} folder not found: {folder}", file=sys.stderr)
             return 1
@@ -95,14 +99,17 @@ def main() -> int:
     zip_path = args.out / f"{icao}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         print(f"main: {add_folder(archive, args.main, 'main', None)} files")
-        if args.parts:
-            print(f"parts: {add_folder(archive, args.parts, 'parts', None)} pieces")
+        if args.time_dir:
+            print(f"time: {add_folder(archive, args.time_dir, 'time', None)} pieces")
+        if args.extra:
+            print(f"extra: {add_folder(archive, args.extra, 'extra', None)} bolt-ons")
         if args.voices:
             print(f"voices: {add_folder(archive, args.voices, 'voices', None)} files")
         for label in ("dep", "dest", "fuel"):
             folder = getattr(args, label)
             if folder:
-                print(f"{label}: {add_folder(archive, folder, label, icao)} clips")
+                # fuel holds tag-on clips with any name; dep and dest hold <ICAO>_<airport>.ogg clips
+                print(f"{label}: {add_folder(archive, folder, label, None if label == 'fuel' else icao)} clips")
 
     sha256 = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     entry = {

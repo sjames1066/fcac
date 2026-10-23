@@ -78,10 +78,12 @@ STORE_PACKAGE = "Microsoft.Limitless_8wekyb3d8bbwe"   # MSFS 2024, Microsoft Sto
 STEAM_APPID = "2537590"                               # MSFS 2024 on Steam
 KOFI_URL = "https://ko-fi.com/sjames1066"
 MAIN_FOLDER = "main"                                  # Airlines\<ICAO>\main: the airline's general PAs (SafetyBriefing...)
-PARTS_FOLDER = "parts"                                # Airlines\<ICAO>\parts: shared pieces joined into the welcome / landing PAs
+PARTS_FOLDER = "time"                                 # Airlines\<ICAO>\time: greetings + local-time clips joined into the PAs
+LEGACY_PARTS = "parts"                                # the old name of the time folder, still read
+EXTRA_FOLDER = "extra"                                # Airlines\<ICAO>\extra: bolt-on announcements (nut allergy, Wi-Fi down...)
 VOICES_FOLDER = "voices"                              # Airlines\<ICAO>\voices\<Name>: another voice artist's set of recordings
 DEFAULT_VOICE = "Default"                             # the recordings directly in Airlines\<ICAO>
-ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, VOICES_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
+ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, VOICES_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
 DEFAULT_CONFIG = {
@@ -99,6 +101,7 @@ DEFAULT_CONFIG = {
     "notifications": True,
     "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
     "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "extra_chance": 25,               # percent of flights that get one random bolt-on from the extra folder (0 = never)
     "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
@@ -113,6 +116,25 @@ DEFAULT_CONFIG = {
 }
 
 log = logging.getLogger("fcac")
+
+DEBUG = True  # shows a red debug panel in the window (what was built, live landing events). Set False for a public release.
+
+
+class _DebugBuffer(logging.Handler):
+    """Keeps the last few log lines for the red debug panel."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.INFO)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(f"{time.strftime('%H:%M:%S')}  {record.getMessage()}")
+        del self.lines[:-60]
+
+
+DEBUG_BUFFER = _DebugBuffer()
+log.addHandler(DEBUG_BUFFER)
+log.setLevel(logging.INFO)
 
 
 class AppError(Exception):
@@ -632,7 +654,7 @@ def ensure_airline_folders(cfg: dict, icao: str) -> tuple[Path, bool]:
     base = airline_folder(cfg, icao)
     created = not base.is_dir()
     try:
-        for folder in (MAIN_FOLDER, PARTS_FOLDER, *(m["folder"] for m in cfg["mappings"])):
+        for folder in (MAIN_FOLDER, PARTS_FOLDER, EXTRA_FOLDER, *(m["folder"] for m in cfg["mappings"])):
             (base / folder).mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise AppError(f"Could not create {base}: {exc}") from exc
@@ -700,7 +722,8 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
                     backup = str(backup_path)
             fenix_dir.parent.mkdir(parents=True, exist_ok=True)
             generic = lib_dir / MAIN_FOLDER
-            shutil.copytree(generic if has_ogg(generic) else staging / MAIN_FOLDER, fenix_dir)
+            shutil.copytree(generic if has_ogg(generic) else staging / MAIN_FOLDER, fenix_dir,
+                            ignore=shutil.ignore_patterns("Modular_*", "modular_*"))
         except OSError as exc:
             raise AppError(f"Could not install {icao} (is MSFS using the files?): {exc}") from exc
 
@@ -877,7 +900,7 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
     """Voices of an airline: "Default" (the recordings in Airlines\\<ICAO> itself, if any) and one per folder in
     Airlines\\<ICAO>\\voices that has sound files. Each voice has its own parts / dep / dest / fuel."""
     voices: dict[str, Path] = {}
-    if any(has_ogg(lib_dir / folder) for folder in (PARTS_FOLDER, "dep", "dest", "fuel")):
+    if any(has_ogg(lib_dir / folder) for folder in (PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, "dep", "dest", "fuel")):
         voices[DEFAULT_VOICE] = lib_dir
     root = lib_dir / VOICES_FOLDER
     if root.is_dir():
@@ -901,26 +924,71 @@ def choose_voice(source: str, lib_dir: Path, voice: str | None = None) -> tuple[
     return voices[name], name, len(voices)
 
 
-def part_file(lib_dir: Path, name: str) -> Path | None:
-    """A shared piece in Airlines\\<ICAO>\\parts, e.g. Welcome_Rest.ogg (case-insensitive)."""
-    folder = lib_dir / PARTS_FOLDER
+def _find_piece(base: Path, names: list[str], subs: tuple[str, ...]) -> Path | None:
+    for sub in subs:
+        folder = base / sub
+        if folder.is_dir():
+            files = {p.name.lower(): p for p in folder.iterdir() if p.is_file()}
+            for name in names:
+                if f"{name}.ogg".lower() in files:
+                    return files[f"{name}.ogg".lower()]
+    return None
+
+
+def part_file(base: Path, name: str) -> Path | None:
+    """A greeting or time piece, e.g. Hour_04.ogg, from Airlines\\<ICAO>\\time (case-insensitive)."""
+    return _find_piece(base, [name], (PARTS_FOLDER, LEGACY_PARTS))
+
+
+def modular_piece(base: Path, kind: str) -> Path | None:
+    """The rest of a modular PA: Modular_Welcome.ogg or Modular_Landing.ogg (in main, next to the generic PAs)."""
+    return _find_piece(base, [f"Modular_{kind}", f"{kind}_Rest"], (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS))
+
+
+def is_modular(name: str) -> bool:
+    return name.lower().startswith("modular_")
+
+
+def fuel_tag(base: Path) -> Path | None:
+    """The tag-on said while refuelling: the first sound file in fuel that isn't an airport clip (BAW_EGLL.ogg)."""
+    folder = base / "fuel"
     if folder.is_dir():
-        for path in folder.iterdir():
-            if path.is_file() and path.name.lower() == f"{name}.ogg".lower():
+        for path in sorted(folder.iterdir()):
+            if path.is_file() and path.suffix.lower() == ".ogg" and not re.match(r"[A-Za-z0-9]{3}_[A-Za-z0-9]{4}", path.name):
                 return path
     return None
 
 
-def welcome_pieces(lib_dir: Path, clip: Path, tag: str) -> list[Path] | None:
-    """Good morning/afternoon/evening + destination + rest of the welcome aboard, or None if a piece is missing."""
-    pieces = [part_file(lib_dir, f"Welcome_{tag.capitalize()}"), clip, part_file(lib_dir, "Welcome_Rest")]
-    return pieces if all(pieces) else None
+def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
+    """Now and then a random bolt-on from the extra folder (nut allergy, Wi-Fi unavailable...), chosen once per
+    flight so rebuilding the PA (voice change, refuelling) keeps the same one."""
+    folder = base / EXTRA_FOLDER
+    files = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".ogg") if folder.is_dir() else []
+    state = load_state()
+    used = state.setdefault("extra_used", {})
+    if key not in used:
+        chance = max(0, min(100, int(cfg.get("extra_chance", 25))))
+        used[key] = random.choice(files).name if files and random.random() * 100 < chance else ""
+        save_state(state)
+    return next((p for p in files if p.name == used[key]), None)
+
+
+def clock_tag() -> str:
+    hour = time.localtime().tm_hour
+    return "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
+
+
+def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None) -> list[Path] | None:
+    """Good morning/afternoon/evening + destination + rest of the welcome aboard (+ fuel tag-on, + a bolt-on), or None
+    if a piece is missing."""
+    pieces = [part_file(lib_dir, f"Welcome_{tag.capitalize()}"), clip, modular_piece(lib_dir, "Welcome")]
+    return [*pieces, *(tail or [])] if all(pieces) else None
 
 
 def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True) -> tuple[list[Path] | None, str]:
     """Welcome to <destination> + "local time is HH:MM" + rest of the landing PA.
     Returns (pieces or None, a note about the time that could not be added)."""
-    rest = part_file(lib_dir, "Landing_Rest")
+    rest = modular_piece(lib_dir, "Landing")
     if not rest:
         return None, ""
     pieces, note = [clip], ""
@@ -950,6 +1018,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     source = check_airline_code(aliases.get(airline, airline))  # whose recordings to use, e.g. BAW
     lib_dir, created = ensure_airline_folders(cfg, source)
     voice_dir, voice_name, voice_count = choose_voice(source, lib_dir, voice)  # clips and parts come from the voice
+    log.info("Applying %s to %s: recordings %s, voice %s, planned landing time %s%s", airline, dest_icao, source,
+             voice_name or "-", arrival or "none", f", only {sorted(only)}" if only else "")
     fenix_dir = airline_packs_dir(cfg) / airline
     if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
         pristine = generic_source(cfg, airline, fenix_dir)
@@ -965,7 +1035,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     if not fenix_dir.is_dir():  # e.g. the folder was deleted: put the complete generic pack back first
         fenix_dir.mkdir(parents=True)
         for path in pristine.iterdir():
-            if path.is_file() and path.suffix.lower() == ".ogg":
+            if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name):
                 shutil.copy2(path, fenix_dir / path.name)
 
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
@@ -974,7 +1044,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     if pristine == lib_dir / MAIN_FOLDER and not only:
         managed = {name for m in cfg["mappings"] for name in target_names(pristine, m)}
         for path in sorted(pristine.iterdir()):
-            if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed:
+            if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name):
                 dst = fenix_dir / path.name
                 if not dst.is_file() or not filecmp.cmp(path, dst, shallow=False):
                     install_file(path, dst)
@@ -1006,24 +1076,30 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
         for mapping in cfg["mappings"]:
             if only and mapping["folder"] not in only:
                 continue
-            clips = all_clips[mapping["folder"]]
+            folder = mapping["folder"]
+            welcome_mode = bool(modular_piece(voice_dir, "Welcome"))
+            # Modular welcome: the dep clip is only the destination name, and the same clip (+ the fuel tag-on) builds
+            # the refuelling variant. Modular landing: the dest clip is "welcome to <destination>".
+            clips = all_clips["dep"] if welcome_mode and folder == "fuel" else all_clips[folder]
             clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
-            # With the shared pieces in "parts", the dep clip is only the destination name (welcome) and the dest clip
-            # is "welcome to <destination>" (landing); FCAC joins them with the pieces into the full PA.
-            joined = (mapping["folder"] == "dep" and part_file(voice_dir, "Welcome_Rest")) or \
-                     (mapping["folder"] == "dest" and part_file(voice_dir, "Landing_Rest"))
+            joined = (folder in ("dep", "fuel") and welcome_mode) or (folder == "dest" and modular_piece(voice_dir, "Landing"))
+            extra = pick_extra(cfg, voice_dir, f"{airline}_{dest_icao}") if joined and folder != "dest" else None
+            if extra and f"extra: {extra.stem}" not in notes:
+                notes.append(f"extra: {extra.stem}")
             built = 0
             for name in target_names(pristine, mapping):
                 dst, generic = fenix_dir / name, (pristine / name if pristine else None)
                 pieces = None
                 if joined and clip:
-                    if mapping["folder"] == "dep":
-                        tags = pack_tags(name) & set(TIME_OF_DAY)
-                        pieces = welcome_pieces(voice_dir, clip, next(iter(tags))) if tags else None
-                    else:
+                    if folder == "dest":
                         pieces, note = landing_pieces(voice_dir, clip, arrival, bool(cfg.get("announce_local_time", True)))
                         if note and note not in notes:
                             notes.append(note)
+                    else:
+                        tags = pack_tags(name) & set(TIME_OF_DAY)
+                        tag = next(iter(tags)) if tags else (clock_tag() if folder == "fuel" else None)
+                        tail = ([fuel_tag(voice_dir)] if folder == "fuel" else []) + [extra]
+                        pieces = welcome_pieces(voice_dir, clip, tag, [t for t in tail if t]) if tag else None
                 if pieces:
                     out = Path(work) / name
                     if fcac_audio is None or not fcac_audio.have_backend():
@@ -1034,6 +1110,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                     except (fcac_audio.AudioError, OSError) as exc:
                         raise AppError(f"Could not join the pieces for {name}: {exc}") from exc
                     install_file(out, dst)
+                    log.info("Built %s = %s", name, " + ".join(p.stem for p in pieces))
                     built += 1
                 elif clip and not joined:
                     install_file(clip, dst)
@@ -1089,7 +1166,7 @@ def restore_generic(cfg: dict, icao: str) -> str:
         raise AppError(f"No saved original {icao} announcements yet (FCAC saves them the first time it changes a pack).")
     fenix_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.iterdir()):
-        if path.is_file() and path.suffix.lower() == ".ogg":
+        if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name):
             install_file(path, fenix_dir / path.name)
     state = load_state()
     state.pop("last", None)
@@ -1335,12 +1412,14 @@ class UIMixin:
         return {
             "version": VERSION,
             "company": company,
+            "debug": DEBUG_BUFFER.lines[-14:] if DEBUG else None,
             "voices": voices,
             "welcome": self._welcome_info(cfg, state),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
                 "local_time": bool(cfg.get("announce_local_time", True)),
+                "extra_chance": int(cfg.get("extra_chance", 25)),
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
                 "windows": sys.platform.startswith("win"),
@@ -1494,6 +1573,14 @@ class UIMixin:
                 set_config_value("on_close", on_close)
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
+                chance = int(data.get("extra_chance", 25))
+                if chance in (0, 25, 50) and chance != int(load_config().get("extra_chance", 25)):
+                    set_config_value("extra_chance", chance)
+                    state = load_state()
+                    state.pop("last", None)
+                    state.pop("extra_used", None)  # roll again for this flight
+                    save_state(state)
+                    self.wake.set()
                 wanted = bool(data.get("local_time", True))
                 if wanted != bool(load_config().get("announce_local_time", True)):
                     set_config_value("announce_local_time", wanted)
@@ -1747,9 +1834,11 @@ class TrayApp(UIMixin):
     def sim_event(self, event: str, clock: str | None) -> None:
         """From the SimConnect watcher: "takeoff" (a new flight) or "landed" with the local time at the airport."""
         if event == "takeoff":
-            state = load_state()
-            if state.pop("live", None):
-                save_state(state)
+            log.info("Takeoff detected - new flight: landing time and extras start again")
+            state = load_state()  # a new flight: the landing PA starts from the plan again and the extras roll again
+            state.pop("live", None)
+            state.pop("extra_used", None)
+            save_state(state)
             return
         with self.lock:  # wait for any update in progress
             try:
