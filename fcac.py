@@ -26,6 +26,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -78,7 +79,9 @@ STEAM_APPID = "2537590"                               # MSFS 2024 on Steam
 KOFI_URL = "https://ko-fi.com/sjames1066"
 MAIN_FOLDER = "main"                                  # Airlines\<ICAO>\main: the airline's general PAs (SafetyBriefing...)
 PARTS_FOLDER = "parts"                                # Airlines\<ICAO>\parts: shared pieces joined into the welcome / landing PAs
-ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
+VOICES_FOLDER = "voices"                              # Airlines\<ICAO>\voices\<Name>: another voice artist's set of recordings
+DEFAULT_VOICE = "Default"                             # the recordings directly in Airlines\<ICAO>
+ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, VOICES_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
 DEFAULT_CONFIG = {
@@ -870,6 +873,34 @@ def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> st
 TIME_OF_DAY = ("morning", "afternoon", "evening")
 
 
+def list_voices(lib_dir: Path) -> dict[str, Path]:
+    """Voices of an airline: "Default" (the recordings in Airlines\\<ICAO> itself, if any) and one per folder in
+    Airlines\\<ICAO>\\voices that has sound files. Each voice has its own parts / dep / dest / fuel."""
+    voices: dict[str, Path] = {}
+    if any(has_ogg(lib_dir / folder) for folder in (PARTS_FOLDER, "dep", "dest", "fuel")):
+        voices[DEFAULT_VOICE] = lib_dir
+    root = lib_dir / VOICES_FOLDER
+    if root.is_dir():
+        for path in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+            if path.is_dir() and any(path.rglob("*.ogg")):
+                voices[path.name] = path
+    return voices
+
+
+def choose_voice(source: str, lib_dir: Path, voice: str | None = None) -> tuple[Path, str, int]:
+    """Which voice's recordings to use: (folder, name, how many voices there are). `voice` forces one; otherwise the
+    one picked in the window (a name, or "random" for a different one each flight), else the first."""
+    voices = list_voices(lib_dir)
+    if not voices:
+        return lib_dir, "", 0
+    if voice in voices:
+        name = voice
+    else:
+        wanted = load_state().get("voices", {}).get(source)
+        name = random.choice(list(voices)) if wanted == "random" else (wanted if wanted in voices else next(iter(voices)))
+    return voices[name], name, len(voices)
+
+
 def part_file(lib_dir: Path, name: str) -> Path | None:
     """A shared piece in Airlines\\<ICAO>\\parts, e.g. Welcome_Rest.ogg (case-insensitive)."""
     folder = lib_dir / PARTS_FOLDER
@@ -911,13 +942,14 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
 
 
 def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None,
-                      arrival: str | None = None, only: set[str] | None = None) -> str:
+                      arrival: str | None = None, only: set[str] | None = None, voice: str | None = None) -> str:
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
     airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
     aliases = load_aliases(cfg)
     source = check_airline_code(aliases.get(airline, airline))  # whose recordings to use, e.g. BAW
     lib_dir, created = ensure_airline_folders(cfg, source)
+    voice_dir, voice_name, voice_count = choose_voice(source, lib_dir, voice)  # clips and parts come from the voice
     fenix_dir = airline_packs_dir(cfg) / airline
     if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
         pristine = generic_source(cfg, airline, fenix_dir)
@@ -948,7 +980,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                     install_file(path, dst)
                     synced += 1
 
-    all_clips = {m["folder"]: find_clips(lib_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
+    all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
     options = variant_options(all_clips)
     chosen = ""
     if variant is not None:
@@ -960,6 +992,9 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     elif len(options) > 1:
         chosen = pick_variant(airline, dest_icao, options, choose or CHOOSER or choose_default)
 
+    state = load_state()
+    state.setdefault("voice_used", {})[f"{airline}_{dest_icao}"] = voice_name
+    save_state(state)
     if len(options) > 1 and variant is None:  # remember which one, so a later rebuild (landing) needn't ask
         state = load_state()
         state.setdefault("variants", {})[f"{airline}_{dest_icao}"] = chosen
@@ -975,8 +1010,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
             # With the shared pieces in "parts", the dep clip is only the destination name (welcome) and the dest clip
             # is "welcome to <destination>" (landing); FCAC joins them with the pieces into the full PA.
-            joined = (mapping["folder"] == "dep" and part_file(lib_dir, "Welcome_Rest")) or \
-                     (mapping["folder"] == "dest" and part_file(lib_dir, "Landing_Rest"))
+            joined = (mapping["folder"] == "dep" and part_file(voice_dir, "Welcome_Rest")) or \
+                     (mapping["folder"] == "dest" and part_file(voice_dir, "Landing_Rest"))
             built = 0
             for name in target_names(pristine, mapping):
                 dst, generic = fenix_dir / name, (pristine / name if pristine else None)
@@ -984,9 +1019,9 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                 if joined and clip:
                     if mapping["folder"] == "dep":
                         tags = pack_tags(name) & set(TIME_OF_DAY)
-                        pieces = welcome_pieces(lib_dir, clip, next(iter(tags))) if tags else None
+                        pieces = welcome_pieces(voice_dir, clip, next(iter(tags))) if tags else None
                     else:
-                        pieces, note = landing_pieces(lib_dir, clip, arrival, bool(cfg.get("announce_local_time", True)))
+                        pieces, note = landing_pieces(voice_dir, clip, arrival, bool(cfg.get("announce_local_time", True)))
                         if note and note not in notes:
                             notes.append(note)
                 if pieces:
@@ -1012,6 +1047,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
 
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
     message = f"{airline} to {shown} ({', '.join(summary)})" + (f" using {source} recordings" if source != airline else "")
+    if voice_count > 1:
+        message += f" - voice: {voice_name}"
     if notes:
         message += " - " + "; ".join(notes)
     if synced:
@@ -1035,7 +1072,8 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     if not arrival:
         return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
-    message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"})
+    message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
+                                voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None)
     state = load_state()
     state["live"] = f"{airline}_{dest}"  # the next SimBrief check must not undo this
     save_state(state)
@@ -1280,6 +1318,16 @@ class UIMixin:
         except OSError:
             pass
         flight = state.get("flight") or None
+        voices = None
+        if flight and flight.get("airline"):
+            source = aliases.get(flight["airline"], flight["airline"])
+            try:
+                names = list(list_voices(airline_folder(cfg, source)))
+            except (OSError, AppError):
+                names = []
+            if len(names) > 1:
+                voices = {"source": source, "options": names, "selected": state.get("voices", {}).get(source) or names[0],
+                          "used": state.get("voice_used", {}).get(f"{flight['airline']}_{flight.get('dest', '')}", "")}
         company = ""
         if flight and flight.get("airline"):  # "British Airways" for BAW, and for SHT which uses the BAW pack
             names = {p["icao"]: p["name"] for p in packs}
@@ -1287,6 +1335,7 @@ class UIMixin:
         return {
             "version": VERSION,
             "company": company,
+            "voices": voices,
             "welcome": self._welcome_info(cfg, state),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
@@ -1374,6 +1423,22 @@ class UIMixin:
             self.start_pack_task("uninstall", check_airline_code(str(data.get("icao", ""))))
         elif name == "update":
             self.run_task("Updating", self.do_update)
+        elif name == "voice":
+            chosen = str(data.get("voice", ""))
+            flight = load_state().get("flight") or {}
+            try:
+                cfg = load_config()
+                source = load_aliases(cfg).get(flight.get("airline", ""), flight.get("airline", ""))
+                names = list(list_voices(airline_folder(cfg, source)))
+            except (AppError, OSError):
+                return {"error": "No flight set up yet."}
+            if chosen != "random" and chosen not in names:
+                return {"error": "Unknown voice."}
+            state = load_state()
+            state.setdefault("voices", {})[source] = chosen
+            state.pop("live", None)
+            save_state(state)
+            self.run_task("Switching voice", self.do_update)
         elif name == "auto":
             self.auto = bool(data.get("on"))
             self.refresh_menu()

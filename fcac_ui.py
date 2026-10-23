@@ -234,6 +234,9 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
 .hero .company .ids{font-weight:500;color:var(--muted);letter-spacing:.02em}
 .hero .company .nm + .ids{margin-left:12px;padding-left:12px;border-left:1px solid var(--line2)}
+.voicerow{display:flex;align-items:center;gap:10px}
+select.voice{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:9px 12px;cursor:pointer;color-scheme:dark}
+select.voice:disabled{opacity:.45}
 .hero .side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;text-align:right}
 .small{font-size:12px;color:var(--faint)}
 button{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);
@@ -427,7 +430,7 @@ function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".p
 
 let heroSig="";
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren();
   const f=snap.flight;
@@ -452,7 +455,17 @@ function renderHero(){
   const m=el("div","msg"); m.textContent=snap.message||""; mid.append(m);
   h.append(mid);
   const side=el("div","side");
-  const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update"); side.append(b);
+  const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update");
+  const v=snap.voices;
+  if(v){
+    const row=el("div","voicerow"); const sel=el("select","voice"); sel.title="Voice artist";
+    v.options.forEach(o=>{const op=el("option",null,o); op.value=o; sel.append(op)});
+    const rnd=el("option",null,"Random voice"); rnd.value="random"; sel.append(rnd);
+    sel.value=v.selected; sel.disabled=snap.busy;
+    sel.onchange=()=>api("voice",{voice:sel.value});
+    row.append(el("span","small","Voice")); row.append(sel); row.append(b); side.append(row);
+    if(v.selected==="random"&&v.used) side.append(el("span","small","This flight: "+v.used));
+  } else side.append(b);
   if(snap.updated) side.append(el("span","small","Last applied "+snap.updated));
   h.append(side);
 }
