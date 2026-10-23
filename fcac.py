@@ -1165,7 +1165,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
 
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
     log.info("Folders: %s", ", ".join(summary))
-    message = f"{airline} to {shown}" + (f" using {source} recordings" if source != airline else "") + (" - your announcements are in place" if custom else "")
+    message = f"{airline} to {shown}" + (f" using {source} recordings" if source != airline else "") + (APPLIED_MARK if custom else "")
     if voice_count > 1:
         message += f" - voice: {voice_info(voice_dir, voice_name)['name']}"
     if notes:
@@ -1214,6 +1214,9 @@ def restore_generic(cfg: dict, icao: str) -> str:
     state.pop("last", None)
     save_state(state)
     return f"Restored the original {icao} announcements"
+
+
+APPLIED_MARK = " - your announcements are in place"   # the dashboard turns this into a green flight card
 
 
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
@@ -1477,7 +1480,8 @@ class UIMixin:
             "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
             "username": cfg.get("simbrief_username", ""),
             "flight": state.get("flight"),
-            "message": self.status,
+            "message": self.status.replace(APPLIED_MARK, "") if APPLIED_MARK not in self.status else "",
+            "applied": APPLIED_MARK in self.status,
             "updated": state.get("updated", ""),
             "auto": self.auto,
             "busy": self.lock.locked() or bool(self.tasks),

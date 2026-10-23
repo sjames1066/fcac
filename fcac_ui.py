@@ -307,6 +307,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);
       border-radius:18px;padding:20px 22px;backdrop-filter:blur(6px)}
 .label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.hero.ok{border-color:rgba(80,200,140,.65);background:linear-gradient(rgba(80,200,140,.10),rgba(80,200,140,.04));box-shadow:0 0 0 1px rgba(80,200,140,.25),0 8px 30px rgba(80,200,140,.10)}
 .hero{display:flex;align-items:center;gap:20px;margin-bottom:26px}
 .hero .logo{width:68px;height:68px;border-radius:16px;flex:none;object-fit:cover;background:var(--surface2)}
 .route{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1}
@@ -638,9 +639,9 @@ let heroSig="", keepClosed=false;
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v]);
   if(sig===heroSig) return; heroSig=sig;
-  const h=$("#hero"); h.replaceChildren();
+  const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
   if(f&&f.airline){h.append(logo(f.airline,"logo"))}
   const mid=el("div"); mid.style.minWidth="0";
@@ -651,7 +652,7 @@ function renderHero(){
     r.append(el("span","arrow","→")); r.append(document.createTextNode(f.dest)); mid.append(r);
     if(f.name) mid.append(el("div","dest-name",f.name));
   }else mid.append(el("div","route","No flight yet"));
-  const m=el("div","msg"); m.textContent=snap.message||""; mid.append(m);
+  if(snap.message){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update");
