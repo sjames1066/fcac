@@ -527,19 +527,19 @@ function renderHero(){
   const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update");
   const v=snap.voices;
   if(v){
-    if(v.options.length>1){
+    {
       const row=el("div","voicerow"); const sel=el("select","voice"); sel.title="Voice artist";
       v.options.forEach(o=>{const op=el("option",null,o.name); op.value=o.id; sel.append(op)});
-      const rnd=el("option",null,"Random voice"); rnd.value="random"; sel.append(rnd);
-      sel.value=v.selected; sel.disabled=snap.busy;
+      if(v.options.length>1){const rnd=el("option",null,"Random voice"); rnd.value="random"; sel.append(rnd)}
+      sel.value=v.options.some(o=>o.id===v.selected)||v.selected==="random"&&v.options.length>1?v.selected:v.options[0].id; sel.disabled=snap.busy;
       sel.onchange=()=>api("voice",{voice:sel.value});
       row.append(el("span","small","Voice")); row.append(sel); row.append(b); side.append(row);
-    } else side.append(b);
+    }
     const cur=v.options.find(o=>o.id===(v.selected==="random"||v.options.length===1?(v.selected==="random"?v.used:v.options[0].id):v.selected))||(v.options.length===1?v.options[0]:null);
     if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
     if(cur&&(cur.artist||cur.accent||cur.description)){
       const line=el("span","small credit"); line.title=cur.description||"";
-      const who=[v.options.length===1&&cur.name?cur.name:"",cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
+      const who=[cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
       line.append(document.createTextNode(who.charAt(0).toUpperCase()+who.slice(1)));
       if(cur.credit_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       side.append(line);
