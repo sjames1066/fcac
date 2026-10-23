@@ -83,6 +83,35 @@ LEGACY = {
 }
 
 
+LOGO_MAX = 5 * 1024 * 1024
+
+
+def logo_path(root: Path, project: dict) -> Path:
+    return project_dir(root, project["icao"], project["voice"]) / "logo.png"
+
+
+def set_logo(root: Path, project: dict, body: bytes) -> None:
+    """Keep the pack's logo as a PNG (at most 512 px). FCAC shows it in the pack list and the window header."""
+    import io
+    from PIL import Image
+    if not body or len(body) > LOGO_MAX:
+        raise StudioError("That image is empty or too large (5 MB limit).")
+    try:
+        image = Image.open(io.BytesIO(body))
+        image.load()
+    except Exception:
+        raise StudioError("That is not an image FCAC can read. Use a png, jpg or webp.")
+    image = image.convert("RGBA")
+    image.thumbnail((512, 512))
+    path = logo_path(root, project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path, "PNG")
+
+
+def remove_logo(root: Path, project: dict) -> None:
+    logo_path(root, project).unlink(missing_ok=True)
+
+
 def raw_takes(raw_dir: Path, slot: dict) -> list[Path]:
     """The raw recordings of a slot. Compared by name, not by glob: stems like CrewTakeSeats[PreFlight] contain [ ]."""
     prefix = f"{slot['folder']}__{slot['stem']}"
@@ -566,6 +595,8 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
         for path in sorted(folder.rglob("*.ogg")):
             archive.write(path, path.relative_to(folder).as_posix())
         archive.writestr("voice.json", json.dumps(voice_json(project), indent=2))
+        if logo_path(root, project).is_file():
+            archive.write(logo_path(root, project), "logo.png")
     entry = {"icao": project["icao"], "name": project["airline"], "version": project.get("version", "1.0.0"),
              "url": zip_path.name, "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
              "size": zip_path.stat().st_size,
@@ -654,4 +685,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         for path in music:
             shutil.copyfile(path, airline_dir / "main" / path.name)
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
+    if logo_path(root, project).is_file():   # the logo belongs to the airline, so it goes beside its folders
+        airline_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(logo_path(root, project), airline_dir / "logo.png")
     return dest

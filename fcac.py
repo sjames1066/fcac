@@ -621,7 +621,7 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
         with zipfile.ZipFile(zip_path) as archive:
             for info in archive.infolist():
                 parts = [p for p in info.filename.replace("\\", "/").split("/") if p]
-                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts != ["voice.json"]):
+                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts not in (["voice.json"], ["logo.png"])):
                     continue
                 if any(p == ".." or ":" in p for p in parts):
                     raise AppError("Pack zip contains an unsafe path - refusing to install it.")
@@ -1737,7 +1737,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
-                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
         return out
@@ -1748,10 +1748,20 @@ class UIMixin:
     def studio_upload(self, icao: str, voice: str, slot: str, filename: str, body: bytes) -> dict:
         try:
             project = fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice)
+            if slot == "@logo":
+                fcac_studio.set_logo(STUDIO_DIR, project, body)
+                return {"ok": True}
             target = self.studio_target(load_config(), project["icao"])[0]
             return {"ok": True, **fcac_studio.store_raw(STUDIO_DIR, project, slot, body, filename, target)}
         except (fcac_studio.StudioError, AppError) as exc:
             return {"error": str(exc)}
+
+    def studio_logo(self, icao: str, voice: str) -> bytes | None:
+        try:
+            path = fcac_studio.logo_path(STUDIO_DIR, fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice))
+            return path.read_bytes() if path.is_file() else None
+        except (fcac_studio.StudioError, AppError, OSError):
+            return None
 
     def studio_audio(self, icao: str, voice: str, slot: str) -> bytes | None:
         try:
@@ -1873,11 +1883,14 @@ class UIMixin:
                 return {"ok": True, **result}
             elif name == "install":
                 dest = fcac_studio.install_to_library(STUDIO_DIR, project, airline_folder(cfg, project["icao"]))
+                self.logo_version += 1
                 state = load_state()
                 state.pop("last", None)
                 save_state(state)
                 self.wake.set()
                 return {"ok": True, "path": str(dest)}
+            elif name == "logo_remove":
+                fcac_studio.remove_logo(STUDIO_DIR, project)
             elif name == "folder":
                 folder = fcac_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"])
                 open_path(folder)

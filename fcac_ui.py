@@ -176,6 +176,13 @@ class UIServer:
                         self._send(200, data, mime)
                     elif path == "/icon.png":
                         self._send(200, server.backend.ui_icon(), "image/png")
+                    elif path == "/studio/logo":  # the pack's own logo, for the preview
+                        q = parse_qs(parsed.query)
+                        data = server.backend.studio_logo(q.get("icao", [""])[0], q.get("voice", [""])[0])
+                        if data is None:
+                            self._json(404, {"error": "not found"})
+                        else:
+                            self._send(200, data, "image/png")
                     elif path == "/studio/audio":  # a processed clip, for the play button
                         q = parse_qs(parsed.query)
                         data = server.backend.studio_audio(q.get("icao", [""])[0], q.get("voice", [""])[0], q.get("slot", [""])[0])
@@ -397,6 +404,9 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .sd-meta{color:var(--muted);font-size:12.5px;margin-top:12px;line-height:1.5}
 .prog{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
 .prog i{display:block;height:100%;background:var(--grad)}
+.logorow{display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap}
+.logorow > div{flex:1;min-width:200px}
+.logoimg{width:56px;height:56px;border-radius:14px;object-fit:cover;background:var(--surface2)}
 details.grp{margin:14px 0}
 details.grp summary{cursor:pointer;font-weight:600;font-size:14px;padding:6px 2px;color:var(--text)}
 details.grp.sub{margin:6px 0 6px 16px;padding-left:10px;border-left:2px solid var(--line,#ddd)}
@@ -946,6 +956,17 @@ function renderStudio(){
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
            field("Credit link (your site / socials)","credit_url",c,"https://..."),field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"));
   card.append(g);
+  const lg=el("div","logorow"),im=el("img","logoimg");im.alt="Pack logo";
+  im.src=c.logo?"/studio/logo?"+new URLSearchParams({icao:c.icao,voice:c.voice,t:TOKEN,v:Date.now()}):"/logo/"+c.icao+".png?t="+TOKEN+"&v="+(snap.logo_v||0);
+  const lt=el("div",null);lt.append(el("div","nm2","Pack logo"),el("div","small",c.logo?"Shown in the pack list and the window header, and included in the exported zip.":"Optional. A png, jpg or webp - a square or wide logo on a transparent or light background works best."));
+  const lf=el("input");lf.type="file";lf.accept="image/png,image/jpeg,image/webp";lf.style.display="none";
+  const lb=el("button",null,c.logo?"Change logo":"Upload logo");lb.onclick=()=>lf.click();
+  lf.onchange=async()=>{const f=lf.files[0];if(!f)return;if(f.size>5*1024*1024){toast("That image is too large (5 MB limit)",6000);return}
+    const q=new URLSearchParams({icao:c.icao,voice:c.voice,slot:"@logo",filename:f.name,t:TOKEN});
+    try{const r=await fetch("/studio/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:f});const j=await r.json();toast(j.error||"Logo saved",j.error?7000:3200)}catch(e){toast("Upload failed",7000)}
+    await refreshNow()};
+  const lr=el("button","ghost","Remove");lr.style.display=c.logo?"":"none";lr.onclick=async()=>{const r=await studio("logo_remove",pid(c));if(r.ok)toast("Logo removed")};
+  lg.append(im,lt,lb,lr,lf);card.append(lg);
   const save=()=>{const d={...pid(c),effect:c.effect};g.querySelectorAll("input").forEach(i=>d[i.dataset.k]=i.value);return d};
   g.querySelectorAll("input").forEach(i=>i.onchange=async()=>{const r=await api("studio_details",save());if(r.ok)toast("Saved");studioSig=""});
   const ef=el("div","radios");ef.style.marginTop="14px";

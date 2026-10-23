@@ -132,6 +132,8 @@ def main() -> int:
             print(f"extra: {add_folder(archive, args.extra, 'extra', None)} bolt-ons")
         if args.airline_dir and (args.airline_dir / "voice.json").is_file():
             archive.write(args.airline_dir / "voice.json", "voice.json")
+        if args.airline_dir and (args.airline_dir / "logo.png").is_file():
+            archive.write(args.airline_dir / "logo.png", "logo.png")
         if args.voices:
             print(f"voices: {add_folder(archive, args.voices, 'voices', None)} files")
         for label in ("airports", "dep", "dest", "fuel"):
