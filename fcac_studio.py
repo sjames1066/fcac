@@ -359,7 +359,7 @@ def status(root: Path, project: dict) -> list[dict]:
             have, info = True, {"imported": True}
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
                 "custom": slot["id"] in project.get("scripts", {})}
-        rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
+        rows.append({**slot, "music": bool(slot.get("music")), "skipped": bool(not have and slot["id"] in project.get("skipped", [])), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     alphabetical = {"Other announcements", "Boarding music", "Bolt-ons"}  # the clock stays in clock order
     first = {}
@@ -471,6 +471,7 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
     except fcac_audio.AudioError as exc:
         raise StudioError(str(exc))
     result["target"] = target
+    project["skipped"] = [i for i in project.get("skipped", []) if i != slot["id"]]
     project.setdefault("slots", {})[slot["id"]] = result
     save(root, project)
     return result
@@ -576,8 +577,18 @@ def voice_json(project: dict) -> dict:
     return {k: v for k, v in data.items() if v}
 
 
+def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
+    """Mark an announcement as skipped (you are not recording it): it counts as done for the checklist and the export."""
+    find_slot(project, slot_id)
+    skipped = [i for i in project.get("skipped", []) if i != slot_id]
+    if skip:
+        skipped.append(slot_id)
+    project["skipped"] = skipped
+    save(root, project)
+
+
 def missing(root: Path, project: dict) -> list[str]:
-    return [s["label"] for s in status(root, project) if s["required"] and not s["done"]]
+    return [s["label"] for s in status(root, project) if s["required"] and not s["done"] and not s["skipped"]]
 
 
 def export(root: Path, project: dict, out_dir: Path) -> dict:

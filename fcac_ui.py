@@ -414,6 +414,8 @@ details.grp.sub summary{font-weight:500;font-size:13.5px}
 details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;margin-left:8px}
 .slot{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:9px 12px;margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
 .slot.done{border-color:rgba(80,200,140,.35)}
+.slot.skipped{border-color:rgba(240,200,60,.6);background:rgba(240,200,60,.09)}
+.slot .nm2 em.sk{color:#f0c83c}
 .slot .nm2{font-weight:600}
 .slot .nm2 em{font-style:normal;color:var(--err);margin-left:6px;font-size:11px}
 .slot .sc{grid-column:1;color:var(--faint);font-size:12.5px}
@@ -897,8 +899,8 @@ function togglePlay(c,id){
 }
 function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
 function slotRow(c,r){
-  const d=el("div","slot"+(r.done?" done":""));
-  const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed"));
+  const d=el("div","slot"+(r.done?" done":"")+(r.skipped?" skipped":""));
+  const nm=el("div","nm2",r.label); if(r.skipped)nm.append(el("em","sk","skipped")); else if(r.required&&!r.done)nm.append(el("em",null,"needed"));
   if(r.modes){const ms=el("select","voice");ms.style.cssText="margin-left:10px;padding:3px 8px;font-size:12px";ms.title="How Fenix plays it: Prerecorded = chosen in the cabin crew panel; Manual = the purser announces it (adds [Manual] to the file name)";
     r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
   d.append(nm);
@@ -928,6 +930,7 @@ function slotRow(c,r){
   sc.onclick=()=>sf2.click();
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
   f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,sc,sf2,f);
+  if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
   if(r.done){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,sp2,x)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,sf2.nextSibling)}
   d.append(act);return d;
@@ -990,14 +993,14 @@ function renderStudio(){
     const ub=el("button","primary","Review upgrade");ub.onclick=()=>{const l=$("#up-list");l.textContent="";c.upgrades.forEach(u=>{const r=el("div","facts");const d=el("div");d.append(el("i",null,u.old),el("span",null,"→ "+u.new));r.append(d);l.append(r)});
       $("#up-ok").onclick=async()=>{$("#m-up").classList.remove("show");const r=await studio("upgrade",pid(c));if(r.ok)toast("Renamed "+r.renamed+" clip"+(r.renamed==1?"":"s"))};$("#m-up").classList.add("show")};
     b.append(ub);root.append(b)}
-  const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
+  const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
   const order=["Welcome aboard","Landing","Airports","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
-    const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done).length+"/"+gr.rows.length));d.append(sm);
+    const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Airports"){
       d.append(el("div","small","Add each airport and record just its name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="EGLL";i.style.textTransform="uppercase";const add=el("button",null,"Add airport");
@@ -1022,7 +1025,7 @@ function renderStudio(){
     if(gr.rows.some(r=>r.part)){
       const parts=[];gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
       parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
-        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done).length+"/"+pt.rows.length));sd.append(ss);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done||r.skipped).length+"/"+pt.rows.length));sd.append(ss);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
     }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
     root.append(d);
   });

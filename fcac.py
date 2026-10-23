@@ -1739,7 +1739,7 @@ class UIMixin:
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
                 "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
-                "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
+                "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
         return out
 
     def studio_project(self, data: dict) -> dict:
@@ -1889,6 +1889,8 @@ class UIMixin:
                 save_state(state)
                 self.wake.set()
                 return {"ok": True, "path": str(dest)}
+            elif name == "skip":
+                fcac_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
             elif name == "logo_remove":
                 fcac_studio.remove_logo(STUDIO_DIR, project)
             elif name == "folder":
