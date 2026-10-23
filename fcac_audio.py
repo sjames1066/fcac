@@ -56,10 +56,15 @@ def _read(path: Path) -> tuple[np.ndarray, int]:
 def _write(path: Path, data: np.ndarray, rate: int) -> None:
     data = np.clip(data, -1.0, 1.0).astype("float32")
     if sf is not None:
+        tmp = path.with_name(path.stem + ".writing.ogg")   # a half-written file is never left behind under the real name
         try:
-            sf.write(str(path), data, rate, format="OGG", subtype="VORBIS")
+            with sf.SoundFile(str(tmp), "w", samplerate=rate, channels=data.shape[1], format="OGG", subtype="VORBIS") as out:
+                for start in range(0, len(data), 8192):   # small blocks: one huge write is what struggles on some setups
+                    out.write(data[start:start + 8192])
+            tmp.replace(path)
             return
         except Exception as exc:
+            tmp.unlink(missing_ok=True)
             raise AudioError(f"Could not write {path.name}: {exc}") from exc
     ffmpeg = shutil.which("ffmpeg")
     done = subprocess.run(

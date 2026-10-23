@@ -2258,6 +2258,12 @@ def main() -> int:
         handlers=[logging.FileHandler(LOG_PATH, encoding="utf-8"), logging.StreamHandler()],
     )
 
+    try:  # if the program ever dies hard (a crash inside a native library), say where in crash.log
+        import faulthandler
+        faulthandler.enable(open(DATA_DIR / "crash.log", "a", encoding="utf-8"), all_threads=True)
+    except Exception:
+        pass
+
     cli = (args.community or args.add_airline or args.list_packs or args.install or args.uninstall
            or args.restore or args.once)
     if not cli:
