@@ -574,6 +574,10 @@ def load_catalog(cfg: dict) -> list[dict]:
             "url": resolved,
             "size": int(entry["size"]) if str(entry.get("size", "")).isdigit() else 0,
             "logo": str(entry.get("logo", "")).strip() if _is_http(str(entry.get("logo", "")).strip()) else "",
+            "voices": [
+                {k: str(v.get(k, "")).strip()[:200] for k in ("name", "artist", "accent", "description")}
+                for v in entry.get("voices", []) if isinstance(v, dict) and str(v.get("name", "")).strip()
+            ][:12],
         })
     return sorted(packs, key=lambda p: p["icao"])
 
@@ -614,7 +618,7 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
         with zipfile.ZipFile(zip_path) as archive:
             for info in archive.infolist():
                 parts = [p for p in info.filename.replace("\\", "/").split("/") if p]
-                if info.is_dir() or not parts or parts[0] not in ZIP_FOLDERS:
+                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts != ["voice.json"]):
                     continue
                 if any(p == ".." or ":" in p for p in parts):
                     raise AppError("Pack zip contains an unsafe path - refusing to install it.")
@@ -910,6 +914,24 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
     return voices
 
 
+def voice_info(path: Path, key: str) -> dict:
+    """What the window shows for a voice: voice.json in its folder ({"name","artist","credit_url","accent",
+    "description"}, all optional). Without it, the folder name is the name."""
+    info = {"id": key, "name": key, "artist": "", "credit_url": "", "accent": "", "description": ""}
+    try:
+        data = json.loads((path / "voice.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return info
+    if isinstance(data, dict):
+        for field in ("name", "artist", "credit_url", "accent", "description"):
+            value = str(data.get(field, "")).strip()[:200]
+            if value:
+                info[field] = value
+    if not _is_http(info["credit_url"]):
+        info["credit_url"] = ""  # "TBC" and the like: nothing to link to
+    return info
+
+
 def choose_voice(source: str, lib_dir: Path, voice: str | None = None) -> tuple[Path, str, int]:
     """Which voice's recordings to use: (folder, name, how many voices there are). `voice` forces one; otherwise the
     one picked in the window (a name, or "random" for a different one each flight), else the first."""
@@ -1125,7 +1147,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
     message = f"{airline} to {shown} ({', '.join(summary)})" + (f" using {source} recordings" if source != airline else "")
     if voice_count > 1:
-        message += f" - voice: {voice_name}"
+        message += f" - voice: {voice_info(voice_dir, voice_name)['name']}"
     if notes:
         message += " - " + "; ".join(notes)
     if synced:
@@ -1375,6 +1397,7 @@ class UIMixin:
             have = installed.get(entry["icao"])
             packs.append({
                 "icao": entry["icao"], "name": entry["name"], "version": entry["version"],
+                "voices": [v["name"] for v in entry.get("voices", [])],
                 "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0,
                 "installed": bool(have), "update": bool(have and have.get("version") != entry["version"]),
                 "task": self.tasks.get(entry["icao"]),
@@ -1402,8 +1425,9 @@ class UIMixin:
                 names = list(list_voices(airline_folder(cfg, source)))
             except (OSError, AppError):
                 names = []
-            if len(names) > 1:
-                voices = {"source": source, "options": names, "selected": state.get("voices", {}).get(source) or names[0],
+            if names:
+                found = list_voices(airline_folder(cfg, source))
+                voices = {"source": source, "options": [voice_info(found[n], n) for n in names], "selected": state.get("voices", {}).get(source) or names[0],
                           "used": state.get("voice_used", {}).get(f"{flight['airline']}_{flight.get('dest', '')}", "")}
         company = ""
         if flight and flight.get("airline"):  # "British Airways" for BAW, and for SHT which uses the BAW pack

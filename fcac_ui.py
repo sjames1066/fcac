@@ -289,6 +289,8 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .debug{margin:-12px 0 22px;padding:12px 16px;border:1px solid rgba(255,93,93,.45);border-radius:14px;background:rgba(255,93,93,.07);
        color:#ff6b6b;font:12px/1.55 Consolas,'Cascadia Mono',monospace;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
 .debug::before{content:"DEBUG - hidden in the release build";display:block;font:700 10px 'Inter',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#ff4d4d;margin-bottom:6px}
+.hero .side .credit a{color:var(--muted);text-decoration:none}
+.hero .side .desc{font-style:italic;max-width:300px}
 .voicerow{display:flex;align-items:center;gap:10px}
 select.voice{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:9px 12px;cursor:pointer;color-scheme:dark}
 select.voice:disabled{opacity:.45}
@@ -525,13 +527,24 @@ function renderHero(){
   const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update");
   const v=snap.voices;
   if(v){
-    const row=el("div","voicerow"); const sel=el("select","voice"); sel.title="Voice artist";
-    v.options.forEach(o=>{const op=el("option",null,o); op.value=o; sel.append(op)});
-    const rnd=el("option",null,"Random voice"); rnd.value="random"; sel.append(rnd);
-    sel.value=v.selected; sel.disabled=snap.busy;
-    sel.onchange=()=>api("voice",{voice:sel.value});
-    row.append(el("span","small","Voice")); row.append(sel); row.append(b); side.append(row);
-    if(v.selected==="random"&&v.used) side.append(el("span","small","This flight: "+v.used));
+    if(v.options.length>1){
+      const row=el("div","voicerow"); const sel=el("select","voice"); sel.title="Voice artist";
+      v.options.forEach(o=>{const op=el("option",null,o.name); op.value=o.id; sel.append(op)});
+      const rnd=el("option",null,"Random voice"); rnd.value="random"; sel.append(rnd);
+      sel.value=v.selected; sel.disabled=snap.busy;
+      sel.onchange=()=>api("voice",{voice:sel.value});
+      row.append(el("span","small","Voice")); row.append(sel); row.append(b); side.append(row);
+    } else side.append(b);
+    const cur=v.options.find(o=>o.id===(v.selected==="random"||v.options.length===1?(v.selected==="random"?v.used:v.options[0].id):v.selected))||(v.options.length===1?v.options[0]:null);
+    if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
+    if(cur&&(cur.artist||cur.accent||cur.description)){
+      const line=el("span","small credit"); line.title=cur.description||"";
+      const who=[v.options.length===1&&cur.name?cur.name:"",cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
+      line.append(document.createTextNode(who.charAt(0).toUpperCase()+who.slice(1)));
+      if(cur.credit_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
+      side.append(line);
+      if(cur.description) side.append(el("span","small desc",cur.description));
+    }
   } else side.append(b);
   if(snap.updated) side.append(el("span","small","Last applied "+snap.updated));
   h.append(side);
@@ -544,6 +557,7 @@ function packCard(p){
   if(p.installed){const ch=el("span","chip "+(p.update?"up":"ok"),p.update?"Update available":"Installed");n.append(ch)}
   info.append(n);
   info.append(el("div","meta",[p.icao,p.version?"v"+p.version:"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
+  if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?p.voices.length+" voices: ":"Voice: ")+p.voices.join(", ")));
   top.append(info);
   const act=el("div","act");
   if(!p.task){

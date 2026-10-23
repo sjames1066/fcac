@@ -40,8 +40,8 @@ def add_folder(archive: zipfile.ZipFile, folder: Path, prefix: str, airline: str
     for path in sorted(folder.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() != ".ogg":  # sound files only (not the _put_..._here.txt notes)
-            continue
+        if path.suffix.lower() != ".ogg" and not (airline is None and path.name.lower() == "voice.json"):
+            continue  # sound files only (and voice.json), not the _put_..._here.txt notes
         if airline is not None:
             match = CLIP_NAME.match(path.name)
             if not match or match["airline"].upper() != airline or path.parent != folder:
@@ -50,6 +50,32 @@ def add_folder(archive: zipfile.ZipFile, folder: Path, prefix: str, airline: str
         archive.write(path, f"{prefix}/{path.relative_to(folder).as_posix()}")
         count += 1
     return count
+
+
+def read_voices(airline_dir: Path | None) -> list[dict]:
+    """The voices of an airline folder for the catalog: its own voice.json ("Default") and voices/<Name>/voice.json."""
+    if airline_dir is None:
+        return []
+    found = []
+
+    def one(folder: Path, fallback: str) -> dict:
+        info = {"name": fallback, "artist": "", "accent": "", "description": ""}
+        try:
+            data = json.loads((folder / "voice.json").read_text(encoding="utf-8-sig"))
+            for key in info:
+                if str(data.get(key, "")).strip():
+                    info[key] = str(data[key]).strip()
+        except (OSError, ValueError, AttributeError):
+            pass
+        return info
+
+    if (airline_dir / "voice.json").is_file():
+        found.append(one(airline_dir, "Default"))
+    root = airline_dir / "voices"
+    if root.is_dir():
+        found += [one(p, p.name) for p in sorted(root.iterdir(), key=lambda p: p.name.lower())
+                  if p.is_dir() and any(p.rglob("*.ogg"))]
+    return found
 
 
 def main() -> int:
@@ -103,6 +129,8 @@ def main() -> int:
             print(f"time: {add_folder(archive, args.time_dir, 'time', None)} pieces")
         if args.extra:
             print(f"extra: {add_folder(archive, args.extra, 'extra', None)} bolt-ons")
+        if args.airline_dir and (args.airline_dir / "voice.json").is_file():
+            archive.write(args.airline_dir / "voice.json", "voice.json")
         if args.voices:
             print(f"voices: {add_folder(archive, args.voices, 'voices', None)} files")
         for label in ("dep", "dest", "fuel"):
@@ -122,6 +150,10 @@ def main() -> int:
     }
     if args.logo_url:
         entry["logo"] = args.logo_url
+    voices = read_voices(args.airline_dir)
+    if voices:
+        entry["voices"] = voices
+        print("voices: " + ", ".join(v["name"] for v in voices))
 
     catalog_path = args.catalog or args.out / "catalog.json"
     catalog = {"packs": []}
