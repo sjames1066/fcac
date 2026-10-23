@@ -284,7 +284,7 @@ all packs sound consistent. Your untouched recordings are kept, so you can switc
 - **Export pack zip** writes `<ICAO>_<Voice>.zip` and a `.catalog.json` entry (open the folder that appears) ready to share.
 - Add a **Support link** (Ko-fi, Patreon...) and it is shown beside your voice name in the window.
 
-In the Studio, **Upload script** takes a text or JSON file with lines such as `Hour 4: Four` or `time/Hour_04: Four`; the words show under each clip and in large type while you record. **Audio settings** lets you pick the microphone and playback device, a playback volume, set a boost, watch the level meter and record a 3-second test.
+In the Studio, **Audio settings** lets you pick the microphone and playback device, a playback volume, set a boost, watch the level meter and record a 3-second test.
 
 Fenix announcement types (BoardingComplete, ArmDoors, CrewTakeSeats, CabinDim, SeatbeltSignOn/Off, CabinService, DescentStarted, DeboardingStarted/Complete, Decompression...) are all in the Studio checklist. Put any of them in an airline's `main` folder and FCAC passes them to the Fenix pack unchanged; the ones FCAC builds itself (BoardingWelcome, AfterLanding) are replaced per flight.
 

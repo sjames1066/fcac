@@ -909,11 +909,7 @@ function renderStudio(){
   top.append(back,el("h2",null,c.airline+" · "+c.voice+" ("+c.icao+")"));
   const sp=el("span");sp.style.cssText="margin-left:auto;display:flex;gap:8px";
   const mic=el("button",null,"🎧 Audio settings");mic.onclick=openMic;
-  const sf=el("input");sf.type="file";sf.accept=".txt,.json,.csv,.md";sf.style.display="none";
-  sf.onchange=async()=>{const f=sf.files[0];if(!f)return;const r=await studio("script",{...pid(c),text:await f.text()});if(r.ok)toast("Script loaded - "+r.matched+" clips"+(r.skipped?" ("+r.skipped+" lines did not match)":""))};
-  const su=el("button",null,c.has_script?"Replace script":"Upload script");su.title="A text or JSON file with lines like  Hour 4: Four  - shown while you record";su.onclick=()=>sf.click();
-  sp.append(mic,su,sf);
-  if(c.has_script){const cl=el("button","ghost","Clear script");cl.onclick=()=>studio("script",{...pid(c),clear:true});sp.append(cl)}
+  sp.append(mic);
   top.append(sp);root.append(top);
   const card=el("section","card");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
