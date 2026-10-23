@@ -238,6 +238,8 @@ def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) 
     data, rate = _read(Path(src))
     data = _trim(data, rate, 40)
     lufs_in = loudness_lufs(data, rate)
+    if lufs_in is None or lufs_in < -60:
+        raise AudioError("No sound was picked up in that recording. If you recorded it, check your microphone in Audio settings.")
     if effect:
         data = pa_effect(data, rate)
     now = loudness_lufs(data, rate)

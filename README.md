@@ -307,3 +307,5 @@ CrewTakeSeats and CabinSecured have separate **takeoff** (`[PreFlight]`) and **l
 Every Studio row has a small script button (hover: *Upload Script*). It takes a text file whose contents become that clip's script, shown under the clip and in large type while you record. A ✕ beside it removes that script.
 
 Click a clip's script line in the Studio to edit it in place: changes are saved as you type, **Enter** finishes (Shift+Enter adds a line), **Esc** undoes.
+
+If a Studio recording is silent, FCAC does not keep it and shows a reminder with a button to open **Audio settings**. A very quiet recording is saved but gets the same reminder. A silent uploaded file is refused with the same hint.

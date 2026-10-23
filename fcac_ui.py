@@ -561,6 +561,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="small" style="margin-bottom:14px">The takeoff and landing versions share one new name and are told apart by flight-phase tags (PreFlight = before takeoff, Descent/Approach = before landing). That is our reading of Fenix's guide - test it in the sim.</div>
   <div class="row"><button id="up-cancel">Not now</button><button class="primary" id="up-ok">Rename them</button></div>
 </div></div>
+<div class="modal" id="m-quiet"><div class="dialog">
+  <h3 id="q-t">No sound picked up</h3><p id="q-s"></p>
+  <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
+</div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="prog"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
 
@@ -823,11 +827,14 @@ async function recordClip(ms,tick){ // records for ms from the chosen microphone
   const t0=Date.now();await new Promise(r=>{const i=setInterval(()=>{const left=(ms-(Date.now()-t0))/1000;if(tick)tick(left);if(left<=0){clearInterval(i);r()}},100)});
   node.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());const rate=ctx.sampleRate;await ctx.close();return wavBlob(chunks,rate);
 }
+function micAlert(title,text){$("#q-t").textContent=title;$("#q-s").textContent=text;$("#m-quiet").classList.add("show")}
+$("#q-close").onclick=()=>$("#m-quiet").classList.remove("show");
+$("#q-open").onclick=()=>{$("#m-quiet").classList.remove("show");openMic()};
 async function startRec(slot,btn){
   if(recState){return}
   let stream;
   try{stream=await micStream()}
-  catch(e){toast("No microphone access - allow it in the window's permission prompt, or upload a file instead");return}
+  catch(e){micAlert("No microphone access","FCAC could not open a microphone. Allow microphone access when the window asks, check that one is plugged in and not blocked in Windows privacy settings, or upload a recording instead.");return}
   const ctx=new (window.AudioContext||window.webkitAudioContext)(), src=ctx.createMediaStreamSource(stream), node=ctx.createScriptProcessor(4096,1,1), chunks=[];
   const gain=Math.pow(10,micPrefs().gain/20);
   node.onaudioprocess=e=>chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0),v=>v*gain));
@@ -835,8 +842,11 @@ async function startRec(slot,btn){
   recState={slot,btn,t0:Date.now(),stop:async()=>{
     node.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());const rate=ctx.sampleRate;await ctx.close();
     const st=recState;recState=null;clearInterval(st.timer);const rw=btn.closest(".slot");if(rw)rw.classList.remove("reading");
-    if(!chunks.length){toast("Nothing was recorded");studioSig="";renderStudio();return}
-    await upload(slot,wavBlob(chunks,rate),"take.wav");}};
+    let peak=0;for(const ch of chunks)for(let i=0;i<ch.length;i++){const v=Math.abs(ch[i]);if(v>peak)peak=v}
+    if(!chunks.length||peak<0.003){ // nothing but silence: do not keep the take
+      studioSig="";renderStudio();micAlert("No sound was picked up","The recording is silent. Check that the right microphone is selected, that it is not muted, and that the level meter moves when you speak - then record it again.");return}
+    await upload(slot,wavBlob(chunks,rate),"take.wav");
+    if(peak<0.03)micAlert("That recording is very quiet","It was saved, but the microphone level is low. Open Audio settings, raise the input boost or move closer, and re-record for the best result.");}};
   btn.textContent="■ Stop 0:00";btn.classList.add("live");const row=btn.closest(".slot");if(row){row.classList.add("reading");row.scrollIntoView({block:"center",behavior:"smooth"})}
   recState.timer=setInterval(()=>{const s=Math.floor((Date.now()-recState.t0)/1000);btn.textContent="■ Stop "+Math.floor(s/60)+":"+String(s%60).padStart(2,"0")},250);
 }
