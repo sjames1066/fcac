@@ -53,10 +53,10 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
     ("DeboardingComplete", "DeboardingComplete", "Deboarding has completed."),
     ("Decompression", "Decompression", "Oxygen masks have deployed - emergency descent instructions."),
 ]
-GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentlemen, welcome aboard this [airline] flight to..."),
-             ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen, welcome aboard this [airline] flight to..."),
-             ("Welcome_Evening", "Good evening", "Good evening, ladies and gentlemen, welcome aboard this [airline] flight to..."),
-             ("Welcome_Night", "Good evening (night, optional)", "The same greeting for boardings between midnight and 6 am; without it the evening greeting is used."),
+GREETINGS = [("Welcome_Morning", "Good morning", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Afternoon", "Good afternoon", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Evening", "Good evening", "Ladies and gentlemen, welcome on board this [airline] flight to..."),
+             ("Welcome_Night", "Good evening (night, optional)", "Ladies and gentlemen, welcome on board this [airline] flight to... (for boardings between midnight and 6 am; without it the evening greeting is used)"),
              ("WelcomeTo", "Landing lead-in", "Ladies and gentlemen, welcome to... (the airport name is added next)"),
              ("LocalTime", "Local time lead-in", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
