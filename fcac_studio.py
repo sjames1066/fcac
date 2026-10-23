@@ -13,6 +13,7 @@ import json
 import re
 import shutil
 import statistics
+import sys
 import zipfile
 from pathlib import Path
 
@@ -172,6 +173,26 @@ def create(root: Path, icao: str, airline: str, voice: str) -> dict:
     return project
 
 
+# --------------------------------------------------------------------------- airport names
+_NAMES = None
+
+
+def airport_name(code: str) -> str:
+    """'London Heathrow' for EGLL (or EGLL_T5); '' when the airport is not in airport_names.json. Data: OurAirports (public domain)."""
+    global _NAMES
+    if _NAMES is None:
+        _NAMES = {}
+        for base in (getattr(sys, "_MEIPASS", None), Path(__file__).parent):
+            f = Path(base) / "airport_names.json" if base else None
+            if f and f.is_file():
+                try:
+                    _NAMES = json.loads(f.read_text(encoding="utf-8"))
+                    break
+                except (OSError, ValueError):
+                    pass
+    return _NAMES.get(code.split("_")[0].upper(), "")
+
+
 # --------------------------------------------------------------------------- the checklist
 def slot_list(project: dict) -> list[dict]:
     icao = project["icao"]
@@ -206,8 +227,9 @@ def slot_list(project: dict) -> list[dict]:
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
     for code in project.get("airports", []):
-        add("Airports", "airports", f"{icao}_{code}", f"Airport name - {code}",
-            "Just the airport's name, e.g. 'London Heathrow'. FCAC puts it into both the welcome aboard and the landing PA.", required=False)
+        name = airport_name(code)
+        add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
+            f"Just the airport's name: '{name or 'London Heathrow'}'. FCAC puts it into both the welcome aboard and the landing PA.", required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     for name in project.get("music", []):
