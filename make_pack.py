@@ -11,6 +11,7 @@ Build an airline pack zip for FCAC and add it to your catalog.json.
 
 The zip contains:
     main/   the airline's general PAs (copied to ...\\AirlinePacks\\<ICAO> and kept in Airlines\\<ICAO>\\main)
+    parts/  optional shared pieces FCAC joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_14.ogg ...)
     dep/    <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome
     dest/   <ICAO>_<destination ICAO>.ogg   -> replaces AfterLanding
     fuel/   <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome[Refueling]
@@ -56,6 +57,7 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--airline-dir", type=Path, help="your Airlines\\<ICAO> folder (main, dep, dest, fuel)")
     parser.add_argument("--main", "--pack", dest="main", type=Path, help="folder of the airline's general PA .ogg files")
+    parser.add_argument("--parts", type=Path, help="folder of shared PA pieces (Welcome_*, Landing_Rest, Hour_*, Min_* ...)")
     parser.add_argument("--dep", type=Path, help="folder of <ICAO>_<dest>.ogg for the welcome aboard")
     parser.add_argument("--dest", type=Path, help="folder of <ICAO>_<dest>.ogg for the arrival welcome")
     parser.add_argument("--fuel", type=Path, help="folder of <ICAO>_<dest>.ogg for the refuelling welcome")
@@ -72,14 +74,14 @@ def main() -> int:
         print("ERROR: --icao must be a 3-character airline code", file=sys.stderr)
         return 1
     if args.airline_dir:  # fill anything not given explicitly from the Airlines\<ICAO> folder
-        for label in ("main", "dep", "dest", "fuel"):
+        for label in ("main", "parts", "dep", "dest", "fuel"):
             candidate = args.airline_dir / label
             if getattr(args, label) is None and candidate.is_dir():
                 setattr(args, label, candidate)
     if args.main is None:
         print("ERROR: no main folder. Give --main, or put the general PAs in <airline-dir>\\main", file=sys.stderr)
         return 1
-    for label, folder in (("main", args.main), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
+    for label, folder in (("main", args.main), ("parts", args.parts), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
         if folder is not None and not folder.is_dir():
             print(f"ERROR: --{label} folder not found: {folder}", file=sys.stderr)
             return 1
@@ -92,6 +94,8 @@ def main() -> int:
     zip_path = args.out / f"{icao}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         print(f"main: {add_folder(archive, args.main, 'main', None)} files")
+        if args.parts:
+            print(f"parts: {add_folder(archive, args.parts, 'parts', None)} pieces")
         for label in ("dep", "dest", "fuel"):
             folder = getattr(args, label)
             if folder:

@@ -7,7 +7,7 @@ echo Installing build tools (one time)...
 if errorlevel 1 goto failed
 echo.
 echo Building FCAC.exe ...
-"%PYEXE%" -m PyInstaller --noconfirm --clean --onefile --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 fcac.py
+"%PYEXE%" -m PyInstaller --noconfirm --clean --onefile --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 --collect-all SimConnect fcac.py
 if errorlevel 1 goto failed
 echo.
 echo Done. Your program is  %~dp0dist\FCAC.exe

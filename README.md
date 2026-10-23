@@ -53,6 +53,40 @@ From the command line: `--once --airline BAW --dest EGLL --variant T5`.
 - The mapping is the `mappings` list in `config.json` if you ever want to change it. `airlines_dir` in `config.json`
   moves the Airlines folder somewhere else.
 
+## Joined announcements (optional): the `parts` folder
+
+Instead of recording a whole PA for every airport, record the airport-specific bit once and share the rest. Put these
+shared pieces in `Airlines\BAW\parts` (names are not case-sensitive). When they are there, FCAC joins the pieces into
+the full announcement and puts that in the Fenix pack.
+
+**Welcome aboard** = greeting + destination + rest:
+
+| Piece | Where | Example |
+|-------|-------|---------|
+| `Welcome_Morning.ogg`, `Welcome_Afternoon.ogg`, `Welcome_Evening.ogg` | `parts` | "Good morning, ladies and gentlemen, welcome aboard this flight to" |
+| `BAW_EGLL.ogg` | `dep` | "London Heathrow" |
+| `Welcome_Rest.ogg` | `parts` | everything after the destination |
+
+FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
+
+**Landing** = welcome to destination + local time + rest:
+
+| Piece | Where | Example |
+|-------|-------|---------|
+| `BAW_EGLL.ogg` | `dest` | "Ladies and gentlemen, welcome to London Heathrow" |
+| `LocalTime.ogg` | `parts` | "where the local time is" |
+| `Hour_00.ogg` ... `Hour_23.ogg` | `parts` | "fourteen" |
+| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | `parts` | "thirty-five" (`Min_00` is optional) |
+| `Landing_Rest.ogg` | `parts` | everything after the time |
+
+The time is rounded to the nearest 5 minutes. If a time piece is missing, the time is left out and the rest still plays.
+Without `Welcome_Rest` / `Landing_Rest`, the `dep` and `dest` recordings are used whole, exactly as before.
+
+**Live local time.** FCAC watches MSFS (SimConnect). When you have landed and slowed to 60 knots ground speed
+(`landing_speed_knots` in `config.json`), it reads the local time at that airport from the sim and rebuilds the landing
+PA with it. Before that, the landing PA uses SimBrief's planned landing time at the destination so something sensible is
+there. A touch-and-go builds nothing. `segment_pause_ms` (default 60) is the pause left between joined pieces.
+
 **Original announcements.** The first time FCAC changes an airline's pack it saves a copy of the original generic
 files. **Restore original announcements** in the tray menu (or `--restore BAW`) puts them back at any time. You can
 also put the generic files yourself in `Airlines\BAW\main`.

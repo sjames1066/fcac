@@ -40,6 +40,11 @@ from urllib.request import url2pathname
 
 import requests
 
+try:
+    import fcac_audio  # joins announcement pieces (needs numpy + soundfile)
+except Exception:  # missing libraries must not stop the rest of the app
+    fcac_audio = None
+
 APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
 VERSION = "1.0.1"
 BASE_DIR = (
@@ -72,7 +77,8 @@ STORE_PACKAGE = "Microsoft.Limitless_8wekyb3d8bbwe"   # MSFS 2024, Microsoft Sto
 STEAM_APPID = "2537590"                               # MSFS 2024 on Steam
 KOFI_URL = "https://ko-fi.com/sjames1066"
 MAIN_FOLDER = "main"                                  # Airlines\<ICAO>\main: the airline's general PAs (SafetyBriefing...)
-ZIP_FOLDERS = (MAIN_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
+PARTS_FOLDER = "parts"                                # Airlines\<ICAO>\parts: shared pieces joined into the welcome / landing PAs
+ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
 DEFAULT_CONFIG = {
@@ -90,6 +96,8 @@ DEFAULT_CONFIG = {
     "notifications": True,
     "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
     "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
+    "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
     "mappings": [
@@ -446,7 +454,32 @@ def fetch_flight(cfg: dict) -> dict:
         "icao": icao,
         "name": str(dest.get("name", "")).strip(),
         "airline": str((data.get("general") or {}).get("icao_airline", "")).strip().upper(),
+        "arrival": arrival_clock(data),
     }
+
+
+def _number(value) -> float | None:
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
+def arrival_clock(data: dict) -> str | None:
+    """The local time at the destination when the plan has you landing, as "HH:MM" rounded to 5 minutes.
+    Landing time (UTC, SimBrief times.sched_on) + the destination's UTC offset. None when SimBrief doesn't say."""
+    times, dest = data.get("times") or {}, data.get("destination") or {}
+    moment = next((n for n in (_number(times.get(k)) for k in ("sched_on", "est_on", "sched_in", "est_in")) if n), None)
+    offset = next((n for n in (_number(dest.get(k)) for k in ("timezone", "utc_offset", "tz_offset", "gmt_offset"))
+                   if n is not None), None)
+    if moment is None or offset is None:
+        log.info("No arrival local time: SimBrief gave landing=%s, destination offset=%s", moment, offset)
+        return None
+    if abs(offset) > 24:  # seconds rather than hours
+        offset /= 3600
+    minutes = int(round((moment / 60 + offset * 60) / 5.0)) * 5  # nearest 5 minutes
+    minutes %= 24 * 60
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 # --------------------------------------------------------------------------- pack catalog
@@ -569,12 +602,12 @@ def check_airline_code(icao: str) -> str:
 
 
 def ensure_airline_folders(cfg: dict, icao: str) -> tuple[Path, bool]:
-    """Create Airlines\\<ICAO>\\main, dep, dest, fuel if they are missing. Returns (folder, newly_created)."""
+    """Create Airlines\\<ICAO>\\main, parts, dep, dest, fuel if they are missing. Returns (folder, newly_created)."""
     icao = check_airline_code(icao)
     base = airline_folder(cfg, icao)
     created = not base.is_dir()
     try:
-        for folder in (MAIN_FOLDER, *(m["folder"] for m in cfg["mappings"])):
+        for folder in (MAIN_FOLDER, PARTS_FOLDER, *(m["folder"] for m in cfg["mappings"])):
             (base / folder).mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise AppError(f"Could not create {base}: {exc}") from exc
@@ -812,7 +845,48 @@ def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> st
     return label
 
 
-def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None) -> str:
+TIME_OF_DAY = ("morning", "afternoon", "evening")
+
+
+def part_file(lib_dir: Path, name: str) -> Path | None:
+    """A shared piece in Airlines\\<ICAO>\\parts, e.g. Welcome_Rest.ogg (case-insensitive)."""
+    folder = lib_dir / PARTS_FOLDER
+    if folder.is_dir():
+        for path in folder.iterdir():
+            if path.is_file() and path.name.lower() == f"{name}.ogg".lower():
+                return path
+    return None
+
+
+def welcome_pieces(lib_dir: Path, clip: Path, tag: str) -> list[Path] | None:
+    """Good morning/afternoon/evening + destination + rest of the welcome aboard, or None if a piece is missing."""
+    pieces = [part_file(lib_dir, f"Welcome_{tag.capitalize()}"), clip, part_file(lib_dir, "Welcome_Rest")]
+    return pieces if all(pieces) else None
+
+
+def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None) -> tuple[list[Path] | None, str]:
+    """Welcome to <destination> + "local time is HH:MM" + rest of the landing PA.
+    Returns (pieces or None, a note about the time that could not be added)."""
+    rest = part_file(lib_dir, "Landing_Rest")
+    if not rest:
+        return None, ""
+    pieces, note = [clip], ""
+    if arrival:
+        hour, minute = arrival.split(":")
+        needed = [part_file(lib_dir, f"Hour_{hour}")]
+        if minute != "00" or part_file(lib_dir, "Min_00"):
+            needed.append(part_file(lib_dir, f"Min_{minute}"))
+        if all(needed):
+            pieces += [p for p in (part_file(lib_dir, "LocalTime"), *needed) if p]
+        else:
+            note = f"local time {arrival} skipped (a Hour_{hour} / Min_{minute} piece is missing)"
+    else:
+        note = "local time skipped (SimBrief gave no arrival time)"
+    return pieces + [rest], note
+
+
+def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None,
+                      arrival: str | None = None, only: set[str] | None = None) -> str:
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
     airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
@@ -840,7 +914,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
     # destination (SafetyBriefing, ArmDoors...): copy any that are new or changed into the Fenix pack.
     synced = 0
-    if pristine == lib_dir / MAIN_FOLDER:
+    if pristine == lib_dir / MAIN_FOLDER and not only:
         managed = {name for m in cfg["mappings"] for name in target_names(pristine, m)}
         for path in sorted(pristine.iterdir()):
             if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed:
@@ -861,23 +935,60 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     elif len(options) > 1:
         chosen = pick_variant(airline, dest_icao, options, choose or CHOOSER or choose_default)
 
-    summary, custom = [], 0
-    for mapping in cfg["mappings"]:
-        clips = all_clips[mapping["folder"]]
-        clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
-        for name in target_names(pristine, mapping):
-            dst, generic = fenix_dir / name, (pristine / name if pristine else None)
-            if clip:
-                install_file(clip, dst)
-            elif generic and generic.is_file():
-                install_file(generic, dst)  # no recording for this airport: back to the pack's generic file
-            else:
-                dst.unlink(missing_ok=True)
-        custom += bool(clip)
-        summary.append(f"{mapping['folder']}: {'custom' if clip else 'generic'}")
+    if len(options) > 1 and variant is None:  # remember which one, so a later rebuild (landing) needn't ask
+        state = load_state()
+        state.setdefault("variants", {})[f"{airline}_{dest_icao}"] = chosen
+        save_state(state)
+
+    summary, custom, notes = [], 0, []
+    pause = int(cfg.get("segment_pause_ms", 60))
+    with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
+        for mapping in cfg["mappings"]:
+            if only and mapping["folder"] not in only:
+                continue
+            clips = all_clips[mapping["folder"]]
+            clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
+            # With the shared pieces in "parts", the dep clip is only the destination name (welcome) and the dest clip
+            # is "welcome to <destination>" (landing); FCAC joins them with the pieces into the full PA.
+            joined = (mapping["folder"] == "dep" and part_file(lib_dir, "Welcome_Rest")) or \
+                     (mapping["folder"] == "dest" and part_file(lib_dir, "Landing_Rest"))
+            built = 0
+            for name in target_names(pristine, mapping):
+                dst, generic = fenix_dir / name, (pristine / name if pristine else None)
+                pieces = None
+                if joined and clip:
+                    if mapping["folder"] == "dep":
+                        tags = pack_tags(name) & set(TIME_OF_DAY)
+                        pieces = welcome_pieces(lib_dir, clip, next(iter(tags))) if tags else None
+                    else:
+                        pieces, note = landing_pieces(lib_dir, clip, arrival)
+                        if note and note not in notes:
+                            notes.append(note)
+                if pieces:
+                    out = Path(work) / name
+                    if fcac_audio is None or not fcac_audio.have_backend():
+                        raise AppError("Joining PA pieces needs the numpy and soundfile libraries "
+                                       "(run Setup FCAC.bat again, or use the latest FCAC.exe).")
+                    try:
+                        fcac_audio.join(pieces, out, pause)
+                    except (fcac_audio.AudioError, OSError) as exc:
+                        raise AppError(f"Could not join the pieces for {name}: {exc}") from exc
+                    install_file(out, dst)
+                    built += 1
+                elif clip and not joined:
+                    install_file(clip, dst)
+                    built += 1
+                elif generic and generic.is_file():
+                    install_file(generic, dst)  # no recording (or no pieces) for this airport: back to the generic file
+                else:
+                    dst.unlink(missing_ok=True)
+            custom += bool(built)
+            summary.append(f"{mapping['folder']}: {'custom' if built else 'generic'}")
 
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
     message = f"{airline} to {shown} ({', '.join(summary)})" + (f" using {source} recordings" if source != airline else "")
+    if notes:
+        message += " - " + "; ".join(notes)
     if synced:
         message += f" - updated {synced} general PA file(s) from main"
     if created:
@@ -885,6 +996,23 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     elif not custom:
         message += f" - no recordings for {source}_{dest_icao} yet"
     return message
+
+
+def rebuild_landing(cfg: dict, arrival: str | None) -> str:
+    """You have landed and slowed down: rebuild the landing PA with the local time the sim reported (HH:MM)."""
+    state = load_state()
+    flight = state.get("flight") or {}
+    airline, dest = flight.get("airline"), flight.get("dest")
+    if not airline or not dest:
+        raise AppError("No flight is set up, so there is no landing PA to build.")
+    if not arrival:
+        return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
+    stored = state.get("variants", {}).get(f"{airline}_{dest}")
+    message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"})
+    state = load_state()
+    state["live"] = f"{airline}_{dest}"  # the next SimBrief check must not undo this
+    save_state(state)
+    return f"Landed - {message}"
 
 
 def restore_generic(cfg: dict, icao: str) -> str:
@@ -907,22 +1035,24 @@ def restore_generic(cfg: dict, icao: str) -> str:
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
-    flight = {"icao": dest.upper(), "airline": ""} if dest else fetch_flight(cfg)
+    flight = {"icao": dest.upper(), "airline": "", "arrival": None} if dest else fetch_flight(cfg)
     code = (airline or cfg.get("airline_override") or flight["airline"] or "").strip().upper()
     if not code:
         raise AppError("The SimBrief plan has no airline ICAO - set airline_override in config.json.")
     code = check_airline_code(code)
     if not re.fullmatch(r"[A-Z0-9]{3,4}", flight["icao"]):
         raise AppError(f"'{flight['icao']}' is not a valid airport code.")
-    key = f"{code}_{flight['icao']}"
+    key = f"{code}_{flight['icao']}_{flight.get('arrival') or ''}"  # a new landing time rebuilds the landing PA
     state = load_state()
     shown = {"airline": code, "dest": flight["icao"], "name": flight.get("name", "")}
     if state.get("flight") != shown:
         state["flight"] = shown
         save_state(state)
+    if not force and state.get("live") == f"{code}_{flight['icao']}":
+        return False, f"{code} to {flight['icao']}: landing PA built from the sim's local time"
     if not force and state.get("last") == key:
         return False, f"Unchanged: {code} to {flight['icao']}"
-    message = apply_destination(cfg, code, flight["icao"], variant=variant)
+    message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"))
     state = load_state()
     state["last"] = key
     state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1505,6 +1635,22 @@ class TrayApp(UIMixin):
             except Exception:
                 log.exception("MSFS watcher error")
 
+    def sim_event(self, event: str, clock: str | None) -> None:
+        """From the SimConnect watcher: "takeoff" (a new flight) or "landed" with the local time at the airport."""
+        if event == "takeoff":
+            state = load_state()
+            if state.pop("live", None):
+                save_state(state)
+            return
+        with self.lock:  # wait for any update in progress
+            try:
+                self.set_status(rebuild_landing(load_config(), clock), notify=True)
+            except AppError as exc:
+                self.set_status(str(exc), notify=True)
+            except Exception as exc:
+                log.exception("Landing PA error")
+                self.set_status(f"Error: {exc}", notify=True)
+
     def toggle_auto(self) -> None:
         self.auto = not self.auto
         self.wake.set()
@@ -1622,6 +1768,13 @@ class TrayApp(UIMixin):
             self.open_window()  # first run: explain what FCAC changes, ask for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
+        try:
+            import fcac_sim
+
+            fcac_sim.SimWatcher(self.sim_event, msfs_running, self.stop,
+                                float(load_config().get("landing_speed_knots", 60))).start()
+        except Exception:
+            log.exception("Could not start the landing watcher")
         self.icon.run()
 
 

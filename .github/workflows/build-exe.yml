@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt pyinstaller
-      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 fcac.py
+      - run: python -m PyInstaller --noconfirm --clean --onefile --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 --collect-all SimConnect fcac.py
       - uses: actions/upload-artifact@v4
         with:
           name: FCAC
