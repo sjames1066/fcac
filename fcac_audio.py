@@ -259,12 +259,22 @@ def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) 
             "lufs_out": None if lufs_out is None else round(lufs_out, 1)}
 
 
+def _is_vorbis_ogg(path: Path) -> bool:
+    """True for a genuine Ogg Vorbis file (not an mp3 renamed .ogg, and not Opus or FLAC inside an Ogg)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(128)
+    except OSError:
+        return False
+    return head[:4] == b"OggS" and b"\x01vorbis" in head
+
+
 def convert_music(src: Path, dst: Path) -> dict:
     """Boarding music: no PA sound, no loudness change. An .ogg is copied as it is; anything else is converted."""
     src, dst = Path(src), Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     data, rate = _read(src)
-    if src.suffix.lower() == ".ogg":
+    if _is_vorbis_ogg(src):
         shutil.copyfile(src, dst)
     else:
         _write(dst, data, rate)
