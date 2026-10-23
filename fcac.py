@@ -1251,8 +1251,14 @@ class UIMixin:
             sources |= {p.name.upper() for p in root.iterdir() if p.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", p.name)}
         except OSError:
             pass
+        flight = state.get("flight") or None
+        company = ""
+        if flight and flight.get("airline"):  # "British Airways" for BAW, and for SHT which uses the BAW pack
+            names = {p["icao"]: p["name"] for p in packs}
+            company = names.get(flight["airline"]) or names.get(aliases.get(flight["airline"], ""), "")
         return {
             "version": VERSION,
+            "company": company,
             "welcome": self._welcome_info(cfg, state),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),

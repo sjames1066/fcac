@@ -231,6 +231,7 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .dest-name{color:var(--muted);margin-top:2px}
 .msg{margin-top:10px;font-size:13px;color:var(--muted)}
 .msg b{color:var(--text);font-weight:600}
+.hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
 .hero .side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;text-align:right}
 .small{font-size:12px;color:var(--faint)}
 button{font:600 13px 'Inter',sans-serif;color:var(--text);background:var(--surface2);border:1px solid var(--line2);
@@ -418,7 +419,7 @@ function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".p
 
 let heroSig="";
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren();
   const f=snap.flight;
@@ -434,6 +435,7 @@ function renderHero(){
   const mid=el("div"); mid.style.minWidth="0";
   mid.append(el("p","label","Your latest SimBrief flight"));
   if(f&&f.dest){
+    if(snap.company) mid.append(el("div","company",snap.company));
     const r=el("div","route"); r.append(document.createTextNode(f.airline||"???"));
     r.append(el("span","arrow","→")); r.append(document.createTextNode(f.dest)); mid.append(r);
     if(f.name) mid.append(el("div","dest-name",f.name));
