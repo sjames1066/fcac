@@ -30,6 +30,7 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
     ("BoardingWelcome[Morning]", "BoardingWelcome - morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
     ("BoardingWelcome[Afternoon]", "BoardingWelcome - afternoon (generic)", "Generic welcome aboard, good afternoon."),
     ("BoardingWelcome[Evening]", "BoardingWelcome - evening (generic)", "Generic welcome aboard, good evening."),
+    ("BoardingWelcome[Night]", "BoardingWelcome - night (generic)", "Generic welcome aboard for boardings between midnight and 6 am."),
     ("BoardingWelcome[Refueling]", "BoardingWelcome - refuelling (generic)", "Generic welcome aboard while the aircraft is being refuelled."),
     ("BoardingComplete", "BoardingComplete", "The purser announces that boarding has completed."),
     ("ArmDoors", "ArmDoors", "Cabin crew, arm doors and cross-check."),
@@ -52,6 +53,7 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
 GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentlemen"),
              ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen"),
              ("Welcome_Evening", "Good evening", "Good evening, ladies and gentlemen"),
+             ("Welcome_Night", "Good evening (night, optional)", "Used for boardings between midnight and 6 am; without it 'Good evening' is used."),
              ("LocalTime", "Local time lead-in", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
 MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty-five", 30: "thirty",
@@ -124,7 +126,7 @@ def slot_list(project: dict) -> list[dict]:
     for stem, label, script in GENERAL:
         add("General announcements", "main", stem, label, script, required=stem.startswith("Modular_"))
     for stem, label, script in GREETINGS:
-        add("Greetings and clock", "time", stem, label, script, required=True)
+        add("Greetings and clock", "time", stem, label, script, required=stem != "Welcome_Night")
     for i, word in enumerate(HOURS):
         n = i or 12
         add("Greetings and clock", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)

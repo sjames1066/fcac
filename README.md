@@ -287,3 +287,5 @@ all packs sound consistent. Your untouched recordings are kept, so you can switc
 In the Studio, **Upload script** takes a text or JSON file with lines such as `Hour 4: Four` or `time/Hour_04: Four`; the words show under each clip and in large type while you record. **Audio settings** lets you pick the microphone and playback device, a playback volume, set a boost, watch the level meter and record a 3-second test.
 
 Fenix announcement types (BoardingComplete, ArmDoors, CrewTakeSeats, CabinDim, SeatbeltSignOn/Off, CabinService, DescentStarted, DeboardingStarted/Complete, Decompression...) are all in the Studio checklist. Put any of them in an airline's `main` folder and FCAC passes them to the Fenix pack unchanged; the ones FCAC builds itself (BoardingWelcome, AfterLanding) are replaced per flight.
+
+Time-of-day tags follow Fenix: Night 00:00-06:00, Morning 06:00-12:00, Afternoon 12:00-18:00, Evening 18:00-24:00. A `BoardingWelcome[Night]` clip in `main` is built with `time\Welcome_Night.ogg` (or `Welcome_Evening.ogg` if you did not record one).

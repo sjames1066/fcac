@@ -899,7 +899,7 @@ def pick_variant(airline: str, dest_icao: str, options: list[str], choose) -> st
     return label
 
 
-TIME_OF_DAY = ("morning", "afternoon", "evening")
+TIME_OF_DAY = ("morning", "afternoon", "evening", "night")   # Fenix tags: night 00-06, morning 06-12, afternoon 12-18, evening 18-24
 
 
 def list_voices(lib_dir: Path) -> dict[str, Path]:
@@ -1001,13 +1001,14 @@ def pick_extra(cfg: dict, base: Path, key: str) -> Path | None:
 
 def clock_tag() -> str:
     hour = time.localtime().tm_hour
-    return "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
+    return "night" if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
 
 
 def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None = None) -> list[Path] | None:
     """Good morning/afternoon/evening + destination + rest of the welcome aboard (+ fuel tag-on, + a bolt-on), or None
     if a piece is missing."""
-    pieces = [part_file(lib_dir, f"Welcome_{tag.capitalize()}"), clip, modular_piece(lib_dir, "Welcome")]
+    greeting = part_file(lib_dir, f"Welcome_{tag.capitalize()}") or (part_file(lib_dir, "Welcome_Evening") if tag == "night" else None)
+    pieces = [greeting, clip, modular_piece(lib_dir, "Welcome")]
     return [*pieces, *(tail or [])] if all(pieces) else None
 
 
