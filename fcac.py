@@ -2262,6 +2262,34 @@ class TrayApp(UIMixin):
 
 
 # --------------------------------------------------------------------------- entry point
+_INSTANCE_LOCK = None
+INSTANCE_PORT = 47653   # a loopback port that only the running copy of FCAC holds
+
+
+def _claim_single_instance() -> bool:
+    """Only one FCAC at a time: a second copy would fight the first over the same files and be impossible to close."""
+    global _INSTANCE_LOCK
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", INSTANCE_PORT))
+        sock.listen(1)
+    except OSError:
+        log.warning("FCAC is already running - this copy will exit")
+        text = "FCAC is already running. Look for its icon in the system tray (bottom right, under the ^ arrow)."
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(0, text, "FCAC", 0x40)
+            except Exception:
+                pass
+        else:
+            print(text)
+        return False
+    _INSTANCE_LOCK = sock
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--community", action="store_true", help="show the detected Community folder")
@@ -2291,6 +2319,8 @@ def main() -> int:
     cli = (args.community or args.add_airline or args.list_packs or args.install or args.uninstall
            or args.restore or args.once)
     if not cli:
+        if not _claim_single_instance():
+            return 0
         TrayApp().run()
         return 0
     try:
