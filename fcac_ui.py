@@ -574,6 +574,10 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="small" style="margin-bottom:14px">The takeoff and landing versions share one new name and are told apart by flight-phase tags (PreFlight = before takeoff, Descent/Approach = before landing). That is our reading of Fenix's guide - test it in the sim.</div>
   <div class="row"><button id="up-cancel">Not now</button><button class="primary" id="up-ok">Rename them</button></div>
 </div></div>
+<div class="modal" id="m-abandon"><div class="dialog">
+  <h3>Abandon this pack?</h3><p id="ab-text"></p>
+  <div class="row"><button id="ab-cancel">Keep it</button><button class="primary" id="ab-ok" style="background:var(--err);border-color:transparent">Delete the pack</button></div>
+</div></div>
 <div class="modal" id="m-quiet"><div class="dialog">
   <h3 id="q-t">No sound picked up</h3><p id="q-s"></p>
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
@@ -590,6 +594,12 @@ let snap=null, structSig="", promptId=null, selected=null, setupShown=false;
 async function api(name,data){
   try{const r=await fetch("/api/"+name,{method:"POST",headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:JSON.stringify(data||{})});
       const j=await r.json(); if(j.error) toast(j.error); return j;}catch(e){toast("Lost contact with FCAC");return {}}
+}
+function confirmDiscard(p){
+  $("#ab-text").textContent="This deletes all the recordings and details of "+p.icao+" - "+p.voice+" in Pack Studio. It cannot be undone. Your Airlines library is not touched.";
+  $("#m-abandon").classList.add("show");
+  $("#ab-cancel").onclick=()=>$("#m-abandon").classList.remove("show");
+  $("#ab-ok").onclick=async()=>{$("#m-abandon").classList.remove("show");const r=await studio("discard",{icao:p.icao,voice:p.voice});if(r.ok)toast("Pack discarded")};
 }
 function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),ms||3200)}
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
@@ -941,7 +951,7 @@ function renderStudio(){
       s.library.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.name+(p.artist?" · "+p.artist:""));b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
       s.projects.forEach(p=>{const w=el("span","chip2");w.style.margin="0 8px 8px 0";const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.cssText="width:auto;height:auto;border-radius:10px;padding:6px 10px;color:var(--text)";b.onclick=()=>studio("open",p);
-        const x=el("button",null,"✕");x.title="Abandon this pack";x.onclick=async()=>{if(x.dataset.sure){const r=await studio("discard",p);if(r.ok)toast("Pack discarded")}else{x.dataset.sure="1";x.textContent="Discard?";x.style.width="auto";x.style.padding="0 8px";setTimeout(()=>{x.dataset.sure="";x.textContent="✕";x.style.width="";x.style.padding=""},3500)}};
+        const x=el("button",null,"✕");x.title="Abandon this pack";x.onclick=()=>confirmDiscard(p);
         w.append(b,x);root.append(w)})}
     return;
   }
@@ -1018,7 +1028,7 @@ function renderStudio(){
   });
   const bar2=el("div","sdbar");
   const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
-  dis.onclick=async()=>{if(dis.dataset.sure){const r=await studio("discard",pid(c));if(r.ok)toast("Pack discarded")}else{dis.dataset.sure="1";dis.textContent="Click again to delete it";setTimeout(()=>{dis.dataset.sure="";dis.textContent="Abandon this pack"},3500)}};
+  dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(c.origin?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
