@@ -1802,6 +1802,8 @@ class UIMixin:
                 fcac_studio.save(STUDIO_DIR, project)
                 if changed:
                     fcac_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+            elif name == "mode":
+                fcac_studio.set_mode(STUDIO_DIR, project, str(data.get("slot", "")), str(data.get("mode", "")))
             elif name == "script":
                 if data.get("clear"):
                     project.pop("scripts", None)

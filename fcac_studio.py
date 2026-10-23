@@ -61,6 +61,10 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
 
+MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing")  # Prerecorded by default; "Manual" adds [Manual] to the file name
+MODES = ("Prerecorded", "Manual")
+
+
 class StudioError(Exception):
     pass
 
@@ -132,8 +136,13 @@ def slot_list(project: dict) -> list[dict]:
     out = []
 
     def add(group, folder, stem, label, script, required=False, out_name=None):
-        out.append({"id": f"{folder}/{stem}", "group": group, "folder": folder, "stem": stem, "label": label,
-                    "script": script, "required": required, "file": f"{out_name or stem}.ogg"})
+        slot_id = f"{folder}/{stem}"
+        modes = list(MODES) if folder == "main" and stem in MODE_SLOTS else None
+        mode = project.get("modes", {}).get(slot_id, MODES[0]) if modes else None
+        tag = "[Manual]" if mode == "Manual" else ""
+        out.append({"id": slot_id, "group": group, "folder": folder, "stem": stem, "label": label,
+                    "script": script, "required": required, "file": f"{out_name or stem}{tag}.ogg",
+                    "modes": modes, "mode": mode})
 
     for stem, label, script in GENERAL:
         add("General announcements", "main", stem, label, script, required=stem.startswith("Modular_"))
@@ -342,6 +351,21 @@ def reprocess_all(root: Path, project: dict, target: float) -> int:
     return count
 
 
+def set_mode(root: Path, project: dict, slot_id: str, mode: str) -> None:
+    """Prerecorded (plain file name) or Manual (the file gets [Manual]). Renames a clip that is already processed."""
+    slot = find_slot(project, slot_id)
+    if not slot["modes"] or mode not in MODES:
+        raise StudioError("That announcement has no mode choice.")
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack" / slot["folder"]
+    old = pack / slot["file"]
+    project.setdefault("modes", {})[slot_id] = mode
+    new = pack / find_slot(project, slot_id)["file"]
+    if old.is_file() and old != new:
+        new.unlink(missing_ok=True)
+        old.rename(new)
+    save(root, project)
+
+
 def delete_slot(root: Path, project: dict, slot_id: str) -> None:
     slot = find_slot(project, slot_id)
     folder = project_dir(root, project["icao"], project["voice"])
@@ -442,6 +466,9 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             progress(i / len(files))
         (pack / folder).mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, pack / folder / path.name)
+    for stem in MODE_SLOTS:  # a clip already called SafetyBriefing[Manual].ogg keeps that mode
+        if (pack / "main" / f"{stem}[Manual].ogg").is_file() and not (pack / "main" / f"{stem}.ogg").is_file():
+            project.setdefault("modes", {})[f"main/{stem}"] = "Manual"
     for slot in slot_list(project):
         if (pack / slot["folder"] / slot["file"]).is_file():
             project["slots"][slot["id"]] = {"imported": True}

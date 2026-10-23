@@ -853,7 +853,10 @@ function togglePlay(c,id){
 function stopPlay(){if(player){const a=player.audio;player=null;a.pause();a.currentTime=0}syncPlayer()}
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
-  const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
+  const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed"));
+  if(r.modes){const ms=el("select","voice");ms.style.cssText="margin-left:10px;padding:3px 8px;font-size:12px";ms.title="How Fenix plays it: Prerecorded = chosen in the cabin crew panel; Manual = the purser announces it (adds [Manual] to the file name)";
+    r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
+  d.append(nm);
   if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom||r.music?r.script:"Say: "+r.script));
   if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged":r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
   const act=el("div","act");
