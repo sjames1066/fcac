@@ -1124,8 +1124,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
             joined = (folder in ("dep", "fuel") and welcome_mode) or (folder == "dest" and modular_piece(voice_dir, "Landing"))
             extra = pick_extra(cfg, voice_dir, f"{airline}_{dest_icao}") if joined and folder != "dest" else None
-            if extra and f"extra: {extra.stem}" not in notes:
-                notes.append(f"extra: {extra.stem}")
+            if extra:
+                log.info("Bolt-on for this flight: %s", extra.stem)
             built = 0
             for name in target_names(pristine, mapping):
                 dst, generic = fenix_dir / name, (pristine / name if pristine else None)
@@ -1164,7 +1164,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             summary.append(f"{mapping['folder']}: {'custom' if built else 'generic'}")
 
     shown = f"{dest_icao} {variant_name(chosen)}" if len(options) > 1 or chosen else dest_icao
-    message = f"{airline} to {shown} ({', '.join(summary)})" + (f" using {source} recordings" if source != airline else "")
+    log.info("Folders: %s", ", ".join(summary))
+    message = f"{airline} to {shown}" + (f" using {source} recordings" if source != airline else "") + (" - your announcements are in place" if custom else "")
     if voice_count > 1:
         message += f" - voice: {voice_info(voice_dir, voice_name)['name']}"
     if notes:
