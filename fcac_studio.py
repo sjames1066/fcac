@@ -132,6 +132,8 @@ def slot_list(project: dict) -> list[dict]:
         add("Greetings and clock", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)
     for minute, word in MINUTES.items():
         add("Greetings and clock", "time", f"Min_{minute:02d}", f"Minute :{minute:02d}", word.capitalize(), required=True)
+    add("Greetings and clock", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
+    add("Greetings and clock", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
     for code in project.get("airports", []):
         add("Airports", "dep", f"{icao}_{code}", f"Welcome aboard - {code}",
             "Just the airport name, e.g. 'London Heathrow'")
