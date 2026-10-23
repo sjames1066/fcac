@@ -224,7 +224,10 @@ class UIServer:
                     log.exception("UI action failed: %s", path)
                     self._json(500, {"error": "internal error"})
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        try:   # the same address every time, so the browser remembers "allow microphone" between launches
+            self.httpd = ThreadingHTTPServer(("127.0.0.1", 47654), Handler)
+        except OSError:
+            self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.httpd.daemon_threads = True
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -249,8 +252,7 @@ class UIServer:
                         self.window = subprocess.Popen(
                             [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
                              f"--window-position={x},{y}",
-                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble",
-                             "--use-fake-ui-for-media-stream"],   # no permission pop-up for the microphone (this window only shows FCAC itself)
+                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
                         raise_window()
