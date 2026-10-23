@@ -500,16 +500,24 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 </div>
 </div>
 
-<div class="modal" id="m-welcome"><div class="dialog" style="width:520px">
+<div class="modal" id="m-welcome"><div class="dialog" style="width:580px;max-height:92vh;overflow:auto">
   <h3>Welcome to FCAC</h3>
-  <p>Before you start, here is what FCAC changes on this PC:</p>
+  <p>FCAC swaps the cabin announcements in your Fenix A320 for ones that match your flight: the right airline, voice and destination, with the local time read live from the sim.</p>
   <div class="facts">
-    <div><b>Your Fenix airline packs</b><span id="w-fenix"></span><i>FCAC replaces the welcome-aboard, arrival and refuelling announcements in these folders with the recording for your destination. Nothing else is touched.</i></div>
-    <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time FCAC changes a pack it saves a copy of the original files. Restore them at any time from the tray icon menu &rarr; Restore original announcements.</i></div>
+    <div><b>1 &middot; Tell FCAC who you are on SimBrief</b><i>Enter your SimBrief username below. FCAC reads your latest flight plan (airline and destination) from SimBrief, and that is what powers everything: it decides which recording to use. It only reads your plan. It never changes anything on SimBrief and sends nothing else anywhere.</i></div>
+    <div><b>2 &middot; Get some announcements</b><i>Install an airline pack from the Packs list on the main screen, or record your own in the Pack Studio tab.</i></div>
+    <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. FCAC updates your announcements by itself when you start MSFS, or any time you press Update now.</i></div>
+  </div>
+  <label class="small" for="w-name" style="display:block;margin:16px 0 6px;font-weight:600;color:var(--text)">Your SimBrief username (the name you log in with, not the numeric ID)</label>
+  <input type="text" id="w-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false">
+  <div class="small" style="margin:18px 0 6px"><b>What FCAC changes on this PC</b></div>
+  <div class="facts">
+    <div><b>Your Fenix airline packs</b><span id="w-fenix"></span><i>The welcome-aboard, arrival and refuelling announcements in these folders are replaced with the recording for your destination. Nothing else is touched.</i></div>
+    <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time FCAC changes a pack it saves a copy of the original files. Restore them any time from the tray icon menu &rarr; Restore original announcements.</i></div>
     <div><b>Your recordings</b><span id="w-rec"></span><i>Airline packs you install, and your own recordings, are stored here.</i></div>
   </div>
-  <p class="small" style="margin:14px 0 18px">FCAC keeps running in the system tray (near the clock) and shows a notification each time it updates your announcements. Close this window whenever you like and open it again by double-clicking the tray icon.</p>
-  <div class="row"><button class="primary" id="w-ok">Got it</button></div>
+  <p class="small" style="margin:14px 0 18px">FCAC keeps running in the system tray (near the clock). Close this window whenever you like and open it again by double-clicking the tray icon.</p>
+  <div class="row"><button class="primary" id="w-ok">Get started</button></div>
 </div></div>
 
 <div class="modal" id="m-aliases"><div class="dialog" style="width:520px">
@@ -620,17 +628,8 @@ function renderHero(){
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren();
   const f=snap.flight;
-  if(snap.setup_needed){
-    const box=el("div"); box.style.flex="1";
-    box.append(el("p","label","Get started"));
-    const t=el("div","route","Welcome aboard"); box.append(t);
-    box.append(el("div","dest-name","Enter your SimBrief username and FCAC will fit your announcements to every flight."));
-    const b=el("button","primary","Set SimBrief username"); b.style.marginTop="14px"; b.onclick=openName; box.append(b);
-    h.append(box); return;
-  }
   if(f&&f.airline){h.append(logo(f.airline,"logo"))}
   const mid=el("div"); mid.style.minWidth="0";
-  mid.append(el("p","label","Your latest SimBrief flight"));
   if(f&&f.dest){
     const ids=[f.number,f.callsign].filter(Boolean).join(" / ");
     if(snap.company||ids){const c=el("div","company"); if(snap.company) c.append(el("span","nm",snap.company)); if(ids) c.append(el("span","ids",ids)); mid.append(c)}
@@ -726,13 +725,22 @@ function renderAliases(){
 let welcomeShown=false;
 function renderWelcome(){
   const w=snap.welcome, m=$("#m-welcome");
-  if(!w){m.classList.remove("show");return}
+  if(!w&&!snap.setup_needed){m.classList.remove("show");return}
   if(welcomeShown) return; welcomeShown=true;
-  $("#w-fenix").textContent=w.fenix||"(found automatically once you've installed an airline pack)";
-  $("#w-orig").textContent=w.originals; $("#w-rec").textContent=w.recordings;
-  m.classList.add("show");
+  const f=w||snap.welcome_info||{};
+  $("#w-fenix").textContent=f.fenix||"(found automatically once you've installed an airline pack)";
+  $("#w-orig").textContent=f.originals||""; $("#w-rec").textContent=f.recordings||"";
+  $("#w-name").value=snap.username||"";
+  m.classList.add("show"); setTimeout(()=>$("#w-name").focus(),80);
 }
-$("#w-ok").onclick=async()=>{await api("welcomed");$("#m-welcome").classList.remove("show");snap.welcome=null};
+$("#w-ok").onclick=async()=>{
+  const v=$("#w-name").value.trim();
+  if(!v){toast("Enter your SimBrief username to continue",5000);$("#w-name").focus();return}
+  $("#m-welcome").classList.remove("show");
+  if(v!==(snap.username||""))await api("username",{name:v});
+  await api("welcomed");snap.welcome=null;snap.setup_needed=false;
+};
+$("#w-name").addEventListener("keydown",e=>{if(e.key==="Enter")$("#w-ok").click()});
 $("#aliases-btn").onclick=()=>{$("#m-aliases").classList.add("show");setTimeout(()=>$("#a-alias").focus(),50)};
 $("#a-done").onclick=()=>$("#m-aliases").classList.remove("show");
 $("#a-add").onclick=async()=>{
@@ -1062,7 +1070,6 @@ async function tick(){
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
     renderHero(); renderDebug(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
-    if(snap.setup_needed&&!snap.welcome&&!setupShown){setupShown=true;openName()}
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }

@@ -1459,6 +1459,7 @@ class UIMixin:
             "debug": DEBUG_BUFFER.lines[-14:] if DEBUG else None,
             "voices": voices,
             "welcome": self._welcome_info(cfg, state),
+            "welcome_info": self._welcome_info(cfg, {}),
             "studio": self.studio_snapshot(cfg),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
