@@ -873,13 +873,14 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None) -> tuple[list
     pieces, note = [clip], ""
     if arrival:
         hour, minute = arrival.split(":")
-        needed = [part_file(lib_dir, f"Hour_{hour}")]
+        twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
+        needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]
         if minute != "00" or part_file(lib_dir, "Min_00"):
             needed.append(part_file(lib_dir, f"Min_{minute}"))
         if all(needed):
             pieces += [p for p in (part_file(lib_dir, "LocalTime"), *needed) if p]
         else:
-            note = f"local time {arrival} skipped (a Hour_{hour} / Min_{minute} piece is missing)"
+            note = f"local time {arrival} skipped (a Hour_{twelve:02d} / Min_{minute} piece is missing)"
     else:
         note = "local time skipped (SimBrief gave no arrival time)"
     return pieces + [rest], note

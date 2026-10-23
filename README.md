@@ -75,8 +75,8 @@ FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by t
 |-------|-------|---------|
 | `BAW_EGLL.ogg` | `dest` | "Ladies and gentlemen, welcome to London Heathrow" |
 | `LocalTime.ogg` | `parts` | "where the local time is" |
-| `Hour_00.ogg` ... `Hour_23.ogg` | `parts` | "fourteen" |
-| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | `parts` | "thirty-five" (`Min_00` is optional) |
+| `Hour_01.ogg` ... `Hour_12.ogg` | `parts` | "four" (12-hour clock: 16:35 is "four thirty-five"; 00:xx and 12:xx both use `Hour_12`) |
+| `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | `parts` | "thirty-five" (`Min_00`, e.g. "o'clock", is optional) |
 | `Landing_Rest.ogg` | `parts` | everything after the time |
 
 The time is rounded to the nearest 5 minutes. If a time piece is missing, the time is left out and the rest still plays.
