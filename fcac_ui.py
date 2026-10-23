@@ -580,7 +580,7 @@ async function api(name,data){
   try{const r=await fetch("/api/"+name,{method:"POST",headers:{"X-Token":TOKEN,"Content-Type":"application/json"},body:JSON.stringify(data||{})});
       const j=await r.json(); if(j.error) toast(j.error); return j;}catch(e){toast("Lost contact with FCAC");return {}}
 }
-function toast(t){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),3200)}
+function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),ms||3200)}
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
 function renderDebug(){
@@ -856,8 +856,8 @@ async function upload(slot,blob,name){
   const c=snap.studio.current; toast("Processing...");
   const q=new URLSearchParams({icao:c.icao,voice:c.voice,slot,filename:name,t:TOKEN});
   try{const r=await fetch("/studio/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:blob});const j=await r.json();
-    if(j.error)toast(j.error);else toast("Done - "+j.seconds+"s, "+j.lufs_in+" → "+j.lufs_out+" LUFS");}
-  catch(e){toast("Upload failed")}
+    if(j.error)toast(j.error,9000);else toast("Done - "+j.seconds+"s, "+j.lufs_in+" → "+j.lufs_out+" LUFS");}
+  catch(e){toast("Upload failed - the recording was not saved. Try again or use Upload.",9000)}
   await refreshNow();
 }
 let player=null; // {id, audio}: the clip being played, paused or resumed
