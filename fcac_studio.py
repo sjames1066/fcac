@@ -41,7 +41,8 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
     ("SafetyBriefing", "SafetyBriefing", "The safety demonstration."),
     ("CrewTakeSeats[PreFlight]", "CrewTakeSeats - takeoff", "Cabin crew, take your seats for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
     ("CrewTakeSeats[Descent][Approach]", "CrewTakeSeats - landing", "Cabin crew, take your seats for landing. (Tagged [Descent][Approach]: used before landing.)"),
-    ("CabinDim", "CabinDim", "We will dim the cabin lights for takeoff / landing."),
+    ("CabinDim[PreFlight]", "CabinDim - takeoff", "We will dim the cabin lights for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
+    ("CabinDim[Descent][Approach]", "CabinDim - landing", "We will dim the cabin lights for landing. (Tagged [Descent][Approach]: used before landing.)"),
     ("CabinSecured[PreFlight]", "CabinSecured - takeoff", "Interphone to the cockpit: cabin secure for takeoff. (Tagged [PreFlight].)"),
     ("CabinSecured[Descent][Approach]", "CabinSecured - landing", "Interphone to the cockpit: cabin secure for landing. (Tagged [Descent][Approach].)"),
     ("AfterTakeoff", "AfterTakeoff", "PA after takeoff, once past acceleration altitude."),
@@ -76,7 +77,7 @@ BEFORE_LANDING = ["Descent", "Approach"]
 LEGACY = {
     "CrewSeatsTakeoff": ("CrewTakeSeats", BEFORE_TAKEOFF), "CrewSeatsLanding": ("CrewTakeSeats", BEFORE_LANDING),
     "CallCabinSecureTakeoff": ("CabinSecured", BEFORE_TAKEOFF), "CallCabinSecureLanding": ("CabinSecured", BEFORE_LANDING),
-    "CabinDimTakeoff": ("CabinDim", []),            # one clip, now used for takeoff and landing
+    "CabinDimTakeoff": ("CabinDim", BEFORE_TAKEOFF),
     "FastenSeatbelt": ("SeatbeltSignOn", []), "DescentSeatbelts": ("DescentStarted", []),
     "DisembarkStarted": ("DeboardingStarted", []),
 }
