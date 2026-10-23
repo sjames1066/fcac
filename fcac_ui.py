@@ -417,7 +417,8 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .slot.reading .sc.editable{cursor:default}
 textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;font:500 13px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--magenta);border-radius:8px;padding:7px 9px;outline:none}
 .slot .act button.rec{background:rgba(255,107,129,.16);border-color:rgba(255,107,129,.5)}
-.slot .act button.live{background:var(--err);color:#fff;border-color:transparent}
+.slot .act button.live{background:var(--err);color:#fff;border-color:transparent;min-width:112px;font-variant-numeric:tabular-nums}
+#view-studio{overflow-anchor:none}
 .addline{display:flex;gap:8px;margin:8px 0}
 .addline input{flex:1}
 .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
@@ -849,7 +850,7 @@ async function startRec(slot,btn){
       studioSig="";renderStudio();micAlert("No sound was picked up","The recording is silent. Check that the right microphone is selected, that it is not muted, and that the level meter moves when you speak - then record it again.");return}
     await upload(slot,wavBlob(chunks,rate),"take.wav");
     if(peak<0.03)micAlert("That recording is very quiet","It was saved, but the microphone level is low. Open Audio settings, raise the input boost or move closer, and re-record for the best result.");}};
-  btn.textContent="■ Stop 0:00";btn.classList.add("live");const row=btn.closest(".slot");if(row){row.classList.add("reading");row.scrollIntoView({block:"center",behavior:"smooth"})}
+  btn.textContent="■ Stop 0:00";btn.classList.add("live");const row=btn.closest(".slot");if(row){row.classList.add("reading");requestAnimationFrame(()=>row.scrollIntoView({block:"center"}))}
   recState.timer=setInterval(()=>{const s=Math.floor((Date.now()-recState.t0)/1000);btn.textContent="■ Stop "+Math.floor(s/60)+":"+String(s%60).padStart(2,"0")},250);
 }
 async function upload(slot,blob,name){
