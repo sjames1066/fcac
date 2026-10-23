@@ -133,6 +133,46 @@ def hour_order(slots: list[dict]) -> list[dict]:
     return [next(it) if s["stem"].startswith("Hour_") else s for s in slots]
 
 
+def _key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+def parse_script(project: dict, text: str) -> tuple[dict, int]:
+    """Read an uploaded script into {slot id: text}. Accepts JSON ({"time/Hour_04": "four"}) or text lines like
+    "Hour 4: Four" / "Hour_04 - Four" / "time/Hour_04 = Four", matching a slot's id, file name or label.
+    Returns (scripts, number of lines that matched nothing)."""
+    slots = slot_list(project)
+    lookup = {}
+    for slot in slots:
+        for name in (slot["id"], slot["stem"], slot["label"]):
+            lookup.setdefault(_key(name), slot["id"])
+    found: dict[str, str] = {}
+    pairs = []
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            pairs = [(str(k), str(v)) for k, v in data.items()]
+    except ValueError:
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            for sep in re.finditer(r"\s*(?::|=|\t| - | – )\s*", line):  # the first split whose left side names a clip
+                if _key(line[:sep.start()]) in lookup and line[sep.end():].strip():
+                    pairs.append((line[:sep.start()], line[sep.end():].strip()))
+                    break
+            else:
+                pairs.append(("", line))
+    skipped = 0
+    for name, words in pairs:
+        slot_id = lookup.get(_key(name))
+        if slot_id:
+            found[slot_id] = words[:1000]
+        else:
+            skipped += 1
+    return found, skipped
+
+
 def find_slot(project: dict, slot_id: str) -> dict:
     for slot in slot_list(project):
         if slot["id"] == slot_id:
@@ -147,6 +187,8 @@ def status(root: Path, project: dict) -> list[dict]:
     for slot in hour_order(slot_list(project)):
         info = done.get(slot["id"])
         have = info is not None and (folder / "pack" / slot["folder"] / slot["file"]).is_file()
+        slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
+                "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None})
     return rows

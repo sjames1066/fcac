@@ -1688,7 +1688,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"],
-                "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "has_script": bool(project.get("scripts")), "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
         return out
@@ -1742,6 +1742,17 @@ class UIMixin:
                 fcac_studio.save(STUDIO_DIR, project)
                 if changed:
                     fcac_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+            elif name == "script":
+                if data.get("clear"):
+                    project.pop("scripts", None)
+                    skipped = 0
+                else:
+                    found, skipped = fcac_studio.parse_script(project, str(data.get("text", ""))[:60000])
+                    if not found:
+                        return {"error": "No lines in that script matched a clip. Use lines like  Hour 4: Four  or  time/Hour_04: Four."}
+                    project.setdefault("scripts", {}).update(found)
+                fcac_studio.save(STUDIO_DIR, project)
+                return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
             elif name == "airport":
                 (fcac_studio.remove_airport if data.get("remove") else fcac_studio.add_airport)(STUDIO_DIR, project, str(data.get("code", "")))
             elif name == "extra":

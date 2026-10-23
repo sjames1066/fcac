@@ -414,6 +414,13 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .addline input{flex:1}
 .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .sdbar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg,#0d0a1f) 30%);padding:18px 0 4px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.meter{height:14px;border-radius:99px;background:var(--surface2);overflow:hidden;position:relative;margin:8px 0 4px}
+.meter i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#4cd08a 0 70%,#f0c040 70% 90%,#ff6b81 90%);transition:width .06s}
+.meter b{position:absolute;top:0;bottom:0;width:2px;background:#fff;left:0}
+.slot.reading{border-color:var(--magenta);background:linear-gradient(var(--surface2),var(--surface2)) padding-box}
+.slot.reading .sc{font-size:20px;line-height:1.35;color:var(--text);padding:6px 0}
+.slot .sc.custom::before{content:"script · ";color:var(--magenta);font-size:12px}
+#m-mic select{width:100%}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
@@ -529,6 +536,13 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
 
+<div class="modal" id="m-mic"><div class="dialog">
+  <h3>Microphone</h3><p>Pick your microphone, speak normally and keep the bar in the green.</p>
+  <div class="label small">Input device</div><select id="mic-dev" class="voice" style="width:100%;margin:6px 0 14px"></select>
+  <div class="label small">Input boost <span id="mic-gv"></span></div><input type="range" id="mic-gain" min="-12" max="18" step="1" style="width:100%">
+  <div class="meter"><i id="mic-bar"></i><b id="mic-peak"></b></div><div class="small" id="mic-msg">Starting the microphone...</div>
+  <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -742,20 +756,63 @@ function wavBlob(chunks,rate){
   let o=44;chunks.forEach(c=>{for(let i=0;i<c.length;i++){const x=Math.max(-1,Math.min(1,c[i]));v.setInt16(o,x<0?x*0x8000:x*0x7fff,true);o+=2}});
   return new Blob([buf],{type:"audio/wav"});
 }
+// ---- microphone settings (kept in this window's browser storage) ----
+function micPrefs(){try{return Object.assign({device:"",gain:0},JSON.parse(localStorage.getItem("fcacMic")||"{}"))}catch(e){return{device:"",gain:0}}}
+function micSave(p){try{localStorage.setItem("fcacMic",JSON.stringify(p))}catch(e){}}
+async function micStream(){
+  const p=micPrefs(), a={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1};
+  if(p.device)a.deviceId={exact:p.device};
+  try{return await navigator.mediaDevices.getUserMedia({audio:a})}
+  catch(e){if(p.device){micSave({...p,device:""});return await navigator.mediaDevices.getUserMedia({audio:{...a,deviceId:undefined}})}throw e}
+}
+let micCtx=null, micTimer=null, micStreamNow=null;
+async function micStop(){clearInterval(micTimer);micTimer=null;if(micStreamNow){micStreamNow.getTracks().forEach(t=>t.stop());micStreamNow=null}if(micCtx){try{await micCtx.close()}catch(e){}micCtx=null}}
+async function micStart(){
+  await micStop();const msg=$("#mic-msg"),p=micPrefs();
+  try{micStreamNow=await micStream()}catch(e){msg.textContent="No microphone access. Allow it when the window asks, then reopen this.";return}
+  const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audioinput"),sel=$("#mic-dev");sel.textContent="";
+  const cur=micStreamNow.getAudioTracks()[0].getSettings().deviceId;
+  devs.forEach(d=>{const o=el("option",null,d.label||"Microphone");o.value=d.deviceId;sel.append(o)});sel.value=p.device&&devs.some(d=>d.deviceId===p.device)?p.device:cur;
+  $("#mic-gain").value=p.gain;$("#mic-gv").textContent=(p.gain>0?"+":"")+p.gain+" dB";
+  micCtx=new (window.AudioContext||window.webkitAudioContext)();const an=micCtx.createAnalyser();an.fftSize=1024;micCtx.createMediaStreamSource(micStreamNow).connect(an);
+  const buf=new Float32Array(an.fftSize);let peak=0,hold=0,clip=0;
+  micTimer=setInterval(()=>{an.getFloatTimeDomainData(buf);const g=Math.pow(10,micPrefs().gain/20);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v)*g);
+    peak=Math.max(m,peak*.9);hold=Math.max(m,hold*.995);if(m>=.99)clip=20;else if(clip)clip--;
+    const db=m>0?20*Math.log10(m):-90,w=Math.max(0,Math.min(1,(db+60)/60));$("#mic-bar").style.width=(w*100)+"%";
+    const hd=hold>0?20*Math.log10(hold):-90;$("#mic-peak").style.left=Math.max(0,Math.min(1,(hd+60)/60))*100+"%";
+    msg.textContent=clip?"Too loud - it is clipping. Turn the boost down or move back.":hd<-30?"Very quiet - move closer or raise the boost.":hd<-18?"A bit quiet - fine, FCAC evens it out, but a little more is better.":hd>-3?"Close to clipping - back off a little.":"Good level.";
+  },60);
+}
+function openMic(){$("#m-mic").classList.add("show");micStart()}
+$("#mic-dev").onchange=()=>{micSave({...micPrefs(),device:$("#mic-dev").value});micStart()};
+$("#mic-gain").oninput=()=>{const g=+$("#mic-gain").value;micSave({...micPrefs(),gain:g});$("#mic-gv").textContent=(g>0?"+":"")+g+" dB"};
+$("#mic-done").onclick=async()=>{await micStop();$("#m-mic").classList.remove("show")};
+$("#mic-test").onclick=async()=>{
+  const b=$("#mic-test");if(b.disabled)return;b.disabled=true;
+  try{const rec=await recordClip(3000,t=>b.textContent="Recording... "+Math.ceil(t)+" s");b.textContent="Playing back...";const url=URL.createObjectURL(rec);const a=new Audio(url);a.onended=()=>{b.disabled=false;b.textContent="Test: record 3 s and play back"};a.play()}
+  catch(e){toast("Could not record - check the microphone");b.disabled=false;b.textContent="Test: record 3 s and play back"}
+};
+async function recordClip(ms,tick){ // records for ms from the chosen microphone with the chosen boost; returns a WAV blob
+  const stream=await micStream(),ctx=new (window.AudioContext||window.webkitAudioContext)(),src=ctx.createMediaStreamSource(stream),node=ctx.createScriptProcessor(4096,1,1),chunks=[],g=Math.pow(10,micPrefs().gain/20);
+  node.onaudioprocess=e=>chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0),v=>v*g));src.connect(node);node.connect(ctx.destination);
+  const t0=Date.now();await new Promise(r=>{const i=setInterval(()=>{const left=(ms-(Date.now()-t0))/1000;if(tick)tick(left);if(left<=0){clearInterval(i);r()}},100)});
+  node.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());const rate=ctx.sampleRate;await ctx.close();return wavBlob(chunks,rate);
+}
 async function startRec(slot,btn){
   if(recState){return}
   let stream;
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}})}
+  try{stream=await micStream()}
   catch(e){toast("No microphone access - allow it in the window's permission prompt, or upload a file instead");return}
   const ctx=new (window.AudioContext||window.webkitAudioContext)(), src=ctx.createMediaStreamSource(stream), node=ctx.createScriptProcessor(4096,1,1), chunks=[];
-  node.onaudioprocess=e=>chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  const gain=Math.pow(10,micPrefs().gain/20);
+  node.onaudioprocess=e=>chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0),v=>v*gain));
   src.connect(node);node.connect(ctx.destination);
   recState={slot,btn,t0:Date.now(),stop:async()=>{
     node.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());const rate=ctx.sampleRate;await ctx.close();
-    const st=recState;recState=null;clearInterval(st.timer);
+    const st=recState;recState=null;clearInterval(st.timer);const rw=btn.closest(".slot");if(rw)rw.classList.remove("reading");
     if(!chunks.length){toast("Nothing was recorded");studioSig="";renderStudio();return}
     await upload(slot,wavBlob(chunks,rate),"take.wav");}};
-  btn.textContent="■ Stop 0:00";btn.classList.add("live");
+  btn.textContent="■ Stop 0:00";btn.classList.add("live");const row=btn.closest(".slot");if(row){row.classList.add("reading");row.scrollIntoView({block:"center",behavior:"smooth"})}
   recState.timer=setInterval(()=>{const s=Math.floor((Date.now()-recState.t0)/1000);btn.textContent="■ Stop "+Math.floor(s/60)+":"+String(s%60).padStart(2,"0")},250);
 }
 async function upload(slot,blob,name){
@@ -773,7 +830,7 @@ function play(c,slot){
 function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
   const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
-  if(r.script)d.append(el("div","sc","Say: "+r.script));
+  if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom?r.script:"Say: "+r.script));
   if(r.done)d.append(el("div","st",r.seconds+" s · "+r.lufs+" LUFS"));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
@@ -802,7 +859,15 @@ function renderStudio(){
     return;
   }
   const top=el("div","section-head");const back=el("button","ghost","← All packs");back.onclick=()=>studio("close");
-  top.append(back,el("h2",null,c.airline+" · "+c.voice+" ("+c.icao+")"));root.append(top);
+  top.append(back,el("h2",null,c.airline+" · "+c.voice+" ("+c.icao+")"));
+  const sp=el("span");sp.style.cssText="margin-left:auto;display:flex;gap:8px";
+  const mic=el("button",null,"🎤 Mic settings");mic.onclick=openMic;
+  const sf=el("input");sf.type="file";sf.accept=".txt,.json,.csv,.md";sf.style.display="none";
+  sf.onchange=async()=>{const f=sf.files[0];if(!f)return;const r=await studio("script",{...pid(c),text:await f.text()});if(r.ok)toast("Script loaded - "+r.matched+" clips"+(r.skipped?" ("+r.skipped+" lines did not match)":""))};
+  const su=el("button",null,c.has_script?"Replace script":"Upload script");su.title="A text or JSON file with lines like  Hour 4: Four  - shown while you record";su.onclick=()=>sf.click();
+  sp.append(mic,su,sf);
+  if(c.has_script){const cl=el("button","ghost","Clear script");cl.onclick=()=>studio("script",{...pid(c),clear:true});sp.append(cl)}
+  top.append(sp);root.append(top);
   const card=el("section","card");card.append(el("h2",null,"Voice details"));
   const g=el("div","sd-grid");
   g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),

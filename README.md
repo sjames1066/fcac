@@ -283,3 +283,5 @@ all packs sound consistent. Your untouched recordings are kept, so you can switc
 - **Use in FCAC now** copies the pack into your library as a voice for that airline so you can try it in the sim.
 - **Export pack zip** writes `<ICAO>_<Voice>.zip` and a `.catalog.json` entry (open the folder that appears) ready to share.
 - Add a **Support link** (Ko-fi, Patreon...) and it is shown beside your voice name in the window.
+
+In the Studio, **Upload script** takes a text or JSON file with lines such as `Hour 4: Four` or `time/Hour_04: Four`; the words show under each clip and in large type while you record. **Mic settings** lets you pick the microphone, set a boost, watch the level meter and record a 3-second test.
