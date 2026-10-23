@@ -1814,6 +1814,16 @@ class UIMixin:
                 return {"ok": True, "renamed": count}
             elif name == "mode":
                 fcac_studio.set_mode(STUDIO_DIR, project, str(data.get("slot", "")), str(data.get("mode", "")))
+            elif name == "script" and data.get("slot"):  # a script for one clip
+                slot = fcac_studio.find_slot(project, str(data["slot"]))
+                words = str(data.get("text", "")).strip()[:4000]
+                scripts = project.setdefault("scripts", {})
+                if words:
+                    scripts[slot["id"]] = words
+                else:
+                    scripts.pop(slot["id"], None)
+                fcac_studio.save(STUDIO_DIR, project)
+                return {"ok": True}
             elif name == "script":
                 if data.get("clear"):
                     project.pop("scripts", None)

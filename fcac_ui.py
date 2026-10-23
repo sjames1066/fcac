@@ -408,6 +408,8 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .slot .st{grid-column:1;color:var(--ok,#7ee0a8);font-size:12px}
 .slot .act{grid-column:2;grid-row:1/4;display:flex;gap:6px;align-items:center}
 .slot .act button{padding:6px 11px}
+.slot .act button.sq{width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
+.slot .sc.custom{white-space:pre-wrap}
 .slot .act button.rec{background:rgba(255,107,129,.16);border-color:rgba(255,107,129,.5)}
 .slot .act button.live{background:var(--err);color:#fff;border-color:transparent}
 .addline{display:flex;gap:8px;margin:8px 0}
@@ -869,9 +871,15 @@ function slotRow(c,r){
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
   if(r.music)rec.style.display="none";
+  const sc=el("button","sq");sc.title=r.custom?"Replace script (uploaded for this item)":"Upload Script";
+  sc.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>';
+  const sf2=el("input");sf2.type="file";sf2.accept=".txt,.md,text/plain";sf2.style.display="none";
+  sf2.onchange=async()=>{const f=sf2.files[0];if(!f)return;if(f.size>20000){toast("That script is too long for one clip");return}await studio("script",{...pid(c),slot:r.id,text:await f.text()});toast("Script added to "+r.label)};
+  sc.onclick=()=>sf2.click();
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
-  f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,f);
+  f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,sc,sf2,f);
   if(r.done){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,sp2,x)}
+  if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,sf2.nextSibling)}
   d.append(act);return d;
 }
 function renderStudio(){
