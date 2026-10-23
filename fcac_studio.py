@@ -53,11 +53,11 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
     ("DeboardingComplete", "DeboardingComplete", "Deboarding has completed."),
     ("Decompression", "Decompression", "Oxygen masks have deployed - emergency descent instructions."),
 ]
-GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentlemen"),
-             ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen"),
-             ("Welcome_Evening", "Good evening", "Good evening, ladies and gentlemen"),
-             ("Welcome_Night", "Good evening (night, optional)", "Used for boardings between midnight and 6 am; without it 'Good evening' is used."),
-             ("WelcomeTo", "Landing lead-in", "Ladies and gentlemen, welcome to"),
+GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentlemen, welcome aboard this [airline] flight to..."),
+             ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen, welcome aboard this [airline] flight to..."),
+             ("Welcome_Evening", "Good evening", "Good evening, ladies and gentlemen, welcome aboard this [airline] flight to..."),
+             ("Welcome_Night", "Good evening (night, optional)", "The same greeting for boardings between midnight and 6 am; without it the evening greeting is used."),
+             ("WelcomeTo", "Landing lead-in", "Ladies and gentlemen, welcome to... (the airport name is added next)"),
              ("LocalTime", "Local time lead-in", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
 MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty-five", 30: "thirty",
@@ -177,26 +177,34 @@ def slot_list(project: dict) -> list[dict]:
     icao = project["icao"]
     out = []
 
-    def add(group, folder, stem, label, script, required=False, out_name=None):
+    def add(group, folder, stem, label, script, required=False, out_name=None, part=None):
         slot_id = f"{folder}/{stem}"
         modes = list(MODES) if folder == "main" and stem in MODE_SLOTS else None
         mode = project.get("modes", {}).get(slot_id, MODES[0]) if modes else None
         tag = "[Manual]" if mode == "Manual" else ""
         out.append({"id": slot_id, "group": group, "folder": folder, "stem": stem, "label": label,
                     "script": script, "required": required, "file": f"{out_name or stem}{tag}.ogg",
-                    "modes": modes, "mode": mode})
+                    "modes": modes, "mode": mode, "part": part})
 
-    for stem, label, script in GENERAL:
-        add("General announcements", "main", stem, label, script, required=stem.startswith("Modular_"))
+    W1, W2 = "Part 1 - the greeting (ends on the start of the destination; the airport name follows)", "Part 2 - the rest of the welcome (after the airport name)"
+    L1, L2 = "Part 1 - the arrival (welcome to, airport name, local time)", "Part 2 - the rest of the landing (after the time)"
     for stem, label, script in GREETINGS:
-        add("Greetings and clock", "time", stem, label, script, required=stem != "Welcome_Night")
+        if stem.startswith("Welcome_"):
+            add("Welcome aboard", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
+    add("Welcome aboard", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
+    for stem, label, script in GREETINGS:
+        if not stem.startswith("Welcome_"):
+            add("Landing", "time", stem, label, script, required=True, part=L1)
     for i, word in enumerate(HOURS):
         n = i or 12
-        add("Greetings and clock", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True)
+        add("Landing", "time", f"Hour_{n:02d}", f"Hour {n}", word.capitalize(), required=True, part=L1)
     for minute, word in MINUTES.items():
-        add("Greetings and clock", "time", f"Min_{minute:02d}", f"Minute :{minute:02d}", word.capitalize(), required=True)
-    add("Greetings and clock", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
-    add("Greetings and clock", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
+        add("Landing", "time", f"Min_{minute:02d}", f"Minute :{minute:02d}", word.capitalize(), required=True, part=L1)
+    add("Landing", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'", part=L1)
+    add("Landing", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'", part=L1)
+    add("Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
+    for stem, label, script in GENERAL[2:]:
+        add("Other announcements", "main", stem, label, script)
     for code in project.get("airports", []):
         add("Airports", "airports", f"{icao}_{code}", f"Airport name - {code}",
             "Just the airport's name, e.g. 'London Heathrow'. FCAC puts it into both the welcome aboard and the landing PA.", required=False)
@@ -295,7 +303,7 @@ def status(root: Path, project: dict) -> list[dict]:
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
-    alphabetical = {"General announcements", "Boarding music", "Bolt-ons"}  # the clock stays in clock order
+    alphabetical = {"Other announcements", "Boarding music", "Bolt-ons"}  # the clock stays in clock order
     first = {}
     for i, r in enumerate(rows):
         first.setdefault(r["group"], i)

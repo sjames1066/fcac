@@ -399,6 +399,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .prog i{display:block;height:100%;background:var(--grad)}
 details.grp{margin:14px 0}
 details.grp summary{cursor:pointer;font-weight:600;font-size:14px;padding:6px 2px;color:var(--text)}
+details.grp.sub{margin:6px 0 6px 16px;padding-left:10px;border-left:2px solid var(--line,#ddd)}
+details.grp.sub summary{font-weight:500;font-size:13.5px}
 details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;margin-left:8px}
 .slot{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:9px 12px;margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
 .slot.done{border-color:rgba(80,200,140,.35)}
@@ -761,7 +763,7 @@ $("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cle
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio
-let view="main", studioSig="", recState=null, openGroups=new Set(["General announcements"]), playing=null;
+let view="main", studioSig="", recState=null, openGroups=new Set(["Welcome aboard"]), playing=null;
 function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";
   $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");if(v==="studio"){studioSig="";renderStudio()}}
 $("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio");
@@ -960,7 +962,7 @@ function renderStudio(){
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["General announcements","Greetings and clock","Airports","Refuelling","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  const order=["Welcome aboard","Landing","Airports","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done).length+"/"+gr.rows.length));d.append(sm);
@@ -985,7 +987,12 @@ function renderStudio(){
       i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
       if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
     }
-    gr.rows.forEach(r=>d.append(slotRow(c,r)));root.append(d);
+    if(gr.rows.some(r=>r.part)){
+      const parts=[];gr.rows.forEach(r=>{let p=parts.find(x=>x.name===r.part);if(!p){p={name:r.part,rows:[]};parts.push(p)}p.rows.push(r)});
+      parts.forEach(pt=>{const key=gr.name+"/"+pt.name,sd=el("details","grp sub");sd.open=openGroups.has(key);sd.ontoggle=()=>{sd.open?openGroups.add(key):openGroups.delete(key)};
+        const ss=el("summary",null,pt.name);ss.append(el("span",null,pt.rows.filter(r=>r.done).length+"/"+pt.rows.length));sd.append(ss);pt.rows.forEach(r=>sd.append(slotRow(c,r)));d.append(sd)});
+    }else gr.rows.forEach(r=>d.append(slotRow(c,r)));
+    root.append(d);
   });
   const bar2=el("div","sdbar");
   const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
