@@ -293,3 +293,5 @@ Time-of-day tags follow Fenix: Night 00:00-06:00, Morning 06:00-12:00, Afternoon
 Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landing PA ("...four thirty-five P.M.") when present.
 
 **Boarding music:** in the Studio's *Boarding music* group, name a track and upload it (no recording, no PA sound). It is saved as `main\BoardingMusic~<Track name>.ogg`, which FCAC copies into the Fenix pack; the cabin crew panel lists it under that name. Use only music you have the right to share.
+
+**Editing an existing pack:** on the Studio start page, *Edit a pack from your library* lists every voice in your Airlines folder. Opening one copies its clips into a project exactly as they are; re-record or upload only what you want to change, add airports, bolt-ons or music, then **Save changes to my library** (writes back over that pack) or **Export pack zip**. Untouched clips are never reprocessed.

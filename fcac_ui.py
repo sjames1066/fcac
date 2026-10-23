@@ -840,7 +840,7 @@ function slotRow(c,r){
   const d=el("div","slot"+(r.done?" done":""));
   const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
   if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom||r.music?r.script:"Say: "+r.script));
-  if(r.done)d.append(el("div","st",r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
+  if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged":r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
   if(r.music)rec.style.display="none";
@@ -864,6 +864,8 @@ function renderStudio(){
     const vn=el("label","wide","Name of this voice"),i3=el("input");i3.type="text";i3.placeholder="Emma";vn.append(i3);g.append(ic,an,vn);card.append(g);
     const row=el("div","row");row.style.marginTop="14px";const go=el("button","primary","Start a new pack");
     go.onclick=async()=>{const r=await studio("create",{icao:i1.value,airline:i2.value,voice:i3.value});if(r.ok)toast("Pack started")};row.append(go);card.append(row);root.append(card);
+    if(s.library&&s.library.length){const h=el("div","section-head");h.append(el("h2",null,"Edit a pack from your library"),el("span",null,"change clips, add airports, fix a recording"));root.append(h);
+      s.library.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.name+(p.artist?" · "+p.artist:""));b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
       s.projects.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.margin="0 8px 8px 0";b.onclick=()=>studio("open",p);root.append(b)})}
     return;
@@ -924,7 +926,7 @@ function renderStudio(){
   });
   const bar2=el("div","sdbar");
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
-  const use=el("button",null,"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast("Added to your library as a voice for "+c.icao)};
+  const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(c.origin?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
   bar2.append(fol,use,ex);root.append(bar2);
 }

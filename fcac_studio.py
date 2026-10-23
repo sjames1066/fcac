@@ -214,7 +214,7 @@ def status(root: Path, project: dict) -> list[dict]:
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
-                     "lufs": info.get("lufs_out") if have else None})
+                     "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported"))})
     return rows
 
 
@@ -381,9 +381,65 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
     return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"]}
 
 
+IMPORT_FOLDERS = ("main", "time", "parts", "extra", "dep", "dest", "fuel")
+
+
+def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str) -> dict:
+    """Open an existing voice folder (Airlines\\<ICAO> itself or voices\\<Name>) for editing: its clips are copied
+    into a new project, untouched, and show as done. Opens the existing project if there already is one."""
+    info = {}
+    try:
+        info = json.loads((src / "voice.json").read_text(encoding="utf-8-sig"))
+        if not isinstance(info, dict):
+            info = {}
+    except (OSError, ValueError):
+        pass
+    voice = str(info.get("name") or fallback_name).strip()[:40] or fallback_name
+    try:
+        return load(root, icao, voice)
+    except StudioError:
+        pass
+    files = []
+    for folder in IMPORT_FOLDERS:
+        base = src / folder
+        if base.is_dir():
+            files += [(p, "time" if folder == "parts" else folder) for p in sorted(base.iterdir())
+                      if p.is_file() and p.suffix.lower() == ".ogg"]
+    if not files:
+        raise StudioError("That pack has no sound files to edit.")
+    project = create(root, icao, airline or icao, voice)
+    for key, limit in (("artist", 80), ("accent", 40), ("description", 200)):
+        project[key] = str(info.get(key, "")).strip()[:limit]
+    for key in ("credit_url", "donate_url"):
+        value = str(info.get(key, "")).strip()[:300]
+        project[key] = value if re.match(r"https?://", value, re.I) else ""
+    for path, folder in files:  # work out the airports, bolt-ons and music tracks it contains
+        stem = path.stem
+        match = re.match(rf"^{re.escape(icao)}_([A-Z0-9]{{4}}(?:_[A-Z0-9]{{1,8}})?)$", stem, re.I)
+        if folder in ("dep", "dest") and match and match[1].upper() not in project["airports"]:
+            project["airports"].append(match[1].upper())
+        elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
+            project["extras"].append(stem)
+        elif folder == "main" and stem.startswith("BoardingMusic~") and MUSIC_NAME.match(stem[14:]):
+            project["music"].append(stem[14:])
+    project["airports"].sort()
+    pack = project_dir(root, icao, voice) / "pack"
+    for path, folder in files:
+        (pack / folder).mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, pack / folder / path.name)
+    for slot in slot_list(project):
+        if (pack / slot["folder"] / slot["file"]).is_file():
+            project["slots"][slot["id"]] = {"imported": True}
+    project["origin"] = str(src)
+    save(root, project)
+    return project
+
+
 def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
-    """Copy the project into Airlines\\<ICAO>\\voices\\<Voice> so FCAC can use it straight away."""
-    dest = airline_dir / "voices" / slug(project["voice"])
+    """Copy the project into Airlines\\<ICAO>\\voices\\<Voice> (or back over the pack it was opened from) so FCAC can
+    use it straight away."""
+    origin = Path(project["origin"]) if project.get("origin") else None
+    dest = origin if origin and origin.is_dir() else airline_dir / "voices" / slug(project["voice"])
     src = project_dir(root, project["icao"], project["voice"]) / "pack"
     if not src.is_dir() or not any(src.rglob("*.ogg")):
         raise StudioError("Record something first.")

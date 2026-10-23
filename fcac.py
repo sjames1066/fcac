@@ -1677,6 +1677,16 @@ class UIMixin:
     def studio_snapshot(self, cfg: dict) -> dict:
         current = getattr(self, "studio_current", None)
         out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR)}
+        if not current:  # packs already in the library that can be opened for editing
+            out["library"] = []
+            try:
+                for folder in sorted(airlines_root(cfg).iterdir(), key=lambda p: p.name.lower()):
+                    if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name):
+                        for key, path in list_voices(folder).items():
+                            info = voice_info(path, key)
+                            out["library"].append({"icao": folder.name.upper(), "voice": key, "name": info["name"], "artist": info["artist"]})
+            except OSError:
+                pass
         if current:
             try:
                 project = fcac_studio.load(STUDIO_DIR, *current)
@@ -1690,7 +1700,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
-                "has_script": bool(project.get("scripts")), "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
         return out
@@ -1717,6 +1727,17 @@ class UIMixin:
         try:
             if name == "create":
                 project = fcac_studio.create(STUDIO_DIR, str(data.get("icao", "")), str(data.get("airline", "")), str(data.get("voice", "")))
+                self.studio_current = (project["icao"], project["voice"])
+                return {"ok": True}
+            if name == "import":
+                icao = check_airline_code(str(data.get("icao", "")))
+                cfg = load_config()
+                found = list_voices(airline_folder(cfg, icao))
+                key = str(data.get("voice", ""))
+                if key not in found:
+                    return {"error": "That pack is no longer in your library."}
+                names = {e["icao"]: e["name"] for e in self.catalog}
+                project = fcac_studio.import_pack(STUDIO_DIR, icao, names.get(icao, icao), found[key], key)
                 self.studio_current = (project["icao"], project["voice"])
                 return {"ok": True}
             if name == "open":
