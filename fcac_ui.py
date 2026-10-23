@@ -294,6 +294,7 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .radio.sel{border-color:transparent;background:linear-gradient(var(--surface2),var(--surface2)) padding-box,var(--grad) border-box;border:1px solid transparent;box-shadow:0 0 0 1px rgba(206,58,128,.35)}
 .modal{position:fixed;inset:0;background:rgba(5,3,14,.72);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;z-index:5}
 .modal.show{display:flex}
+#m-settings .row{position:sticky;bottom:-26px;background:var(--surface);padding:12px 0 2px}
 .dialog{max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:26px;width:440px;max-width:92vw;
         box-shadow:0 30px 80px rgba(0,0,0,.6)}
 .dialog h3{margin:0 0 4px;font-size:18px;letter-spacing:-.02em}
@@ -390,6 +391,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <div class="radios" id="s-min">
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
       <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
+    </div></div>
+  <div class="setting"><div class="label">Local time in the landing announcement</div>
+    <div class="radios" id="s-time">
+      <div class="radio" data-v="yes"><b>Say the local time</b><span>"&hellip;where the local time is four thirty-five", read from the sim once you have landed</span></div>
+      <div class="radio" data-v="no"><b>Leave it out</b><span>The landing announcement goes straight on without the time</span></div>
     </div></div>
   <div class="setting"><div class="label">Start FCAC automatically</div>
     <div class="radios" id="s-start">
@@ -533,14 +539,14 @@ function renderPrompt(){
 $("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
-let cfg={on_close:"tray",autostart:"off",min:"no"};
+let cfg={on_close:"tray",autostart:"off",min:"no",time:"yes"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no"};
+  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes"};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min);
+  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#m-settings").classList.add("show");
 }
@@ -549,7 +555,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",quit_with_msfs:$("#s-quit").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;

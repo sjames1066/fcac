@@ -96,6 +96,7 @@ DEFAULT_CONFIG = {
     "notifications": True,
     "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
     "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
@@ -864,14 +865,16 @@ def welcome_pieces(lib_dir: Path, clip: Path, tag: str) -> list[Path] | None:
     return pieces if all(pieces) else None
 
 
-def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None) -> tuple[list[Path] | None, str]:
+def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True) -> tuple[list[Path] | None, str]:
     """Welcome to <destination> + "local time is HH:MM" + rest of the landing PA.
     Returns (pieces or None, a note about the time that could not be added)."""
     rest = part_file(lib_dir, "Landing_Rest")
     if not rest:
         return None, ""
     pieces, note = [clip], ""
-    if arrival:
+    if not want_time:
+        pass  # switched off in Settings
+    elif arrival:
         hour, minute = arrival.split(":")
         twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
         needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]
@@ -962,7 +965,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                         tags = pack_tags(name) & set(TIME_OF_DAY)
                         pieces = welcome_pieces(lib_dir, clip, next(iter(tags))) if tags else None
                     else:
-                        pieces, note = landing_pieces(lib_dir, clip, arrival)
+                        pieces, note = landing_pieces(lib_dir, clip, arrival, bool(cfg.get("announce_local_time", True)))
                         if note and note not in notes:
                             notes.append(note)
                 if pieces:
@@ -1006,6 +1009,8 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     airline, dest = flight.get("airline"), flight.get("dest")
     if not airline or not dest:
         raise AppError("No flight is set up, so there is no landing PA to build.")
+    if not cfg.get("announce_local_time", True):
+        return f"Landed at {dest}"
     if not arrival:
         return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
@@ -1263,6 +1268,7 @@ class UIMixin:
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
+                "local_time": bool(cfg.get("announce_local_time", True)),
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
                 "windows": sys.platform.startswith("win"),
@@ -1400,6 +1406,14 @@ class UIMixin:
                 set_config_value("on_close", on_close)
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
+                wanted = bool(data.get("local_time", True))
+                if wanted != bool(load_config().get("announce_local_time", True)):
+                    set_config_value("announce_local_time", wanted)
+                    state = load_state()  # rebuild the landing PA with / without the time on the next check
+                    state.pop("last", None)
+                    state.pop("live", None)
+                    save_state(state)
+                    self.wake.set()
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")

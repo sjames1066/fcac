@@ -86,6 +86,7 @@ Without `Welcome_Rest` / `Landing_Rest`, the `dep` and `dest` recordings are use
 (`landing_speed_knots` in `config.json`), it reads the local time at that airport from the sim and rebuilds the landing
 PA with it. Before that, the landing PA uses SimBrief's planned landing time at the destination so something sensible is
 there. A touch-and-go builds nothing. `segment_pause_ms` (default 60) is the pause left between joined pieces.
+Turn the spoken time off in **Settings** (or `"announce_local_time": false` in `config.json`): the landing PA then goes from the airport welcome straight to the rest.
 
 **Original announcements.** The first time FCAC changes an airline's pack it saves a copy of the original generic
 files. **Restore original announcements** in the tray menu (or `--restore BAW`) puts them back at any time. You can
