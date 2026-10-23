@@ -18,6 +18,7 @@ import logging
 import os
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -55,6 +56,55 @@ def _browser_candidates() -> list[Path]:
     roots = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
     parts = [("Microsoft", "Edge", "Application", "msedge.exe"), ("Google", "Chrome", "Application", "chrome.exe")]
     return [Path(root, *part) for part in parts for root in roots if root]
+
+
+def raise_window(title: str = "FCAC", wait: float = 8.0) -> None:
+    """Windows: bring the FCAC window to the front of everything. It is found by its title once it has appeared, and
+    Windows' rules against stealing focus are got around by a brief 'always on top'. Runs in the background."""
+    if not sys.platform.startswith("win"):
+        return
+
+    def work() -> None:
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                            ctypes.c_int, wintypes.UINT]
+            user32.IsWindowVisible.argtypes = [wintypes.HWND]
+            user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+            found: list = []
+            enum_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+            def visit(hwnd, _lparam):
+                if user32.IsWindowVisible(hwnd):
+                    buf = ctypes.create_unicode_buffer(256)
+                    user32.GetWindowTextW(hwnd, buf, 256)
+                    if buf.value == title:
+                        found.append(hwnd)
+                return True
+
+            deadline = time.time() + wait
+            while time.time() < deadline and not found:
+                user32.EnumWindows(enum_type(visit), 0)
+                if not found:
+                    time.sleep(0.25)
+            if not found:
+                return
+            hwnd = found[0]
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE: also un-minimizes
+            user32.keybd_event(0x12, 0, 0, 0)  # a tap of Alt lets this process take the foreground
+            user32.keybd_event(0x12, 0, 2, 0)
+            user32.SetForegroundWindow(hwnd)
+            flags = 0x0001 | 0x0002 | 0x0040  # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+            user32.SetWindowPos(hwnd, wintypes.HWND(-1), 0, 0, 0, 0, flags)  # HWND_TOPMOST...
+            user32.SetWindowPos(hwnd, wintypes.HWND(-2), 0, 0, 0, 0, flags)  # ...then back to normal
+            user32.SetForegroundWindow(hwnd)
+        except Exception:
+            log.exception("Could not bring the window to the front")
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 class UIServer:
@@ -160,6 +210,7 @@ class UIServer:
             if self.httpd is None:
                 self.start()
             if self.window is not None and self.window.poll() is None:
+                raise_window()  # already open (maybe behind other windows): bring it forward
                 return
             url = self.url()
             for exe in _browser_candidates():
@@ -173,6 +224,7 @@ class UIServer:
                              "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
+                        raise_window()
                         return
                     except OSError:
                         log.exception("Could not start %s", exe)
