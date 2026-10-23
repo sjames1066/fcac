@@ -867,7 +867,9 @@ function renderStudio(){
     if(s.library&&s.library.length){const h=el("div","section-head");h.append(el("h2",null,"Edit a pack from your library"),el("span",null,"change clips, add airports, fix a recording"));root.append(h);
       s.library.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.name+(p.artist?" · "+p.artist:""));b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
-      s.projects.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.margin="0 8px 8px 0";b.onclick=()=>studio("open",p);root.append(b)})}
+      s.projects.forEach(p=>{const w=el("span","chip2");w.style.margin="0 8px 8px 0";const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.cssText="width:auto;height:auto;border-radius:10px;padding:6px 10px;color:var(--text)";b.onclick=()=>studio("open",p);
+        const x=el("button",null,"✕");x.title="Abandon this pack";x.onclick=async()=>{if(x.dataset.sure){const r=await studio("discard",p);if(r.ok)toast("Pack discarded")}else{x.dataset.sure="1";x.textContent="Discard?";x.style.width="auto";x.style.padding="0 8px";setTimeout(()=>{x.dataset.sure="";x.textContent="✕";x.style.width="";x.style.padding=""},3500)}};
+        w.append(b,x);root.append(w)})}
     return;
   }
   const top=el("div","section-head");const back=el("button","ghost","← All packs");back.onclick=()=>studio("close");
@@ -925,10 +927,12 @@ function renderStudio(){
     gr.rows.forEach(r=>d.append(slotRow(c,r)));root.append(d);
   });
   const bar2=el("div","sdbar");
+  const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
+  dis.onclick=async()=>{if(dis.dataset.sure){const r=await studio("discard",pid(c));if(r.ok)toast("Pack discarded")}else{dis.dataset.sure="1";dis.textContent="Click again to delete it";setTimeout(()=>{dis.dataset.sure="";dis.textContent="Abandon this pack"},3500)}};
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(c.origin?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
-  bar2.append(fol,use,ex);root.append(bar2);
+  bar2.append(dis,fol,use,ex);root.append(bar2);
 }
 
 async function tick(){

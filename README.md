@@ -295,3 +295,5 @@ Optional `time\AM.ogg` and `time\PM.ogg` are said after the minutes in the landi
 **Boarding music:** in the Studio's *Boarding music* group, name a track and upload it (no recording, no PA sound). It is saved as `main\BoardingMusic~<Track name>.ogg`, which FCAC copies into the Fenix pack; the cabin crew panel lists it under that name. Use only music you have the right to share.
 
 **Editing an existing pack:** on the Studio start page, *Edit a pack from your library* lists every voice in your Airlines folder. Opening one copies its clips into a project exactly as they are; re-record or upload only what you want to change, add airports, bolt-ons or music, then **Save changes to my library** (writes back over that pack) or **Export pack zip**. Untouched clips are never reprocessed.
+
+**Abandoning a pack:** click ✕ next to a pack in progress, or *Abandon this pack* inside it (click twice to confirm). This deletes only the Studio project - its recordings and details - never your Airlines library.

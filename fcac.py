@@ -1744,6 +1744,12 @@ class UIMixin:
                 project = self.studio_project(data)
                 self.studio_current = (project["icao"], project["voice"])
                 return {"ok": True}
+            if name == "discard":
+                project = self.studio_project(data)
+                fcac_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
+                if getattr(self, "studio_current", None) == (project["icao"], project["voice"]):
+                    self.studio_current = None
+                return {"ok": True}
             if name == "close":
                 self.studio_current = None
                 return {"ok": True}

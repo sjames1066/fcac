@@ -73,6 +73,17 @@ def project_dir(root: Path, icao: str, voice: str) -> Path:
     return root / icao / slug(voice)
 
 
+def discard(root: Path, icao: str, voice: str) -> None:
+    """Delete a project (recordings, processed clips, details). Never touches the Airlines library."""
+    folder = project_dir(root, icao, voice)
+    if not (folder / "project.json").is_file() or root.resolve() not in folder.resolve().parents:
+        raise StudioError("That project does not exist.")
+    shutil.rmtree(folder)
+    parent = folder.parent
+    if parent != root and not any(parent.iterdir()):
+        parent.rmdir()
+
+
 def list_projects(root: Path) -> list[dict]:
     found = []
     for file in sorted(root.glob("*/*/project.json")) if root.is_dir() else []:
