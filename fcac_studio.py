@@ -63,7 +63,7 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
 
-MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing")  # Prerecorded by default; "Manual" adds [Manual] to the file name
+MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing", "Decompression")  # Prerecorded by default; "Manual" adds [Manual] to the file name
 MODES = ("Prerecorded", "Manual")
 
 
@@ -296,6 +296,17 @@ def status(root: Path, project: dict) -> list[dict]:
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
                      "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
+    alphabetical = {"General announcements", "Boarding music", "Bolt-ons"}  # the clock stays in clock order
+    first = {}
+    for i, r in enumerate(rows):
+        first.setdefault(r["group"], i)
+    def order(r):
+        if r["group"] in alphabetical:
+            return r["label"].lower()
+        if r["group"] == "Airports":   # by airport, welcome aboard before landing
+            return r["stem"].split("_", 1)[-1] + ("0" if r["folder"] == "dep" else "1")
+        return 0
+    rows.sort(key=lambda r: (first[r["group"]], order(r)))
     return rows
 
 
