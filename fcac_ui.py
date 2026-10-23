@@ -249,7 +249,8 @@ class UIServer:
                         self.window = subprocess.Popen(
                             [str(exe), f"--app={url}", f"--user-data-dir={self.profile_dir}", f"--window-size={w},{h}",
                              f"--window-position={x},{y}",
-                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble"],
+                             "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble",
+                             "--use-fake-ui-for-media-stream"],   # no permission pop-up for the microphone (this window only shows FCAC itself)
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                         )
                         raise_window()
@@ -818,14 +819,24 @@ function newAudio(url){const a=new Audio(url),p=micPrefs();a.volume=Math.max(0,M
 async function micStop(){clearInterval(micTimer);micTimer=null;if(micStreamNow){micStreamNow.getTracks().forEach(t=>t.stop());micStreamNow=null}if(micCtx){try{await micCtx.close()}catch(e){}micCtx=null}}
 async function micStart(){
   await micStop();const msg=$("#mic-msg"),p=micPrefs();
-  try{micStreamNow=await micStream()}catch(e){msg.textContent="No microphone access. Allow it when the window asks, then reopen this.";return}
-  const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audioinput"),sel=$("#mic-dev");sel.textContent="";
-  const cur=micStreamNow.getAudioTracks()[0].getSettings().deviceId;
-  devs.forEach(d=>{const o=el("option",null,d.label||"Microphone");o.value=d.deviceId;sel.append(o)});sel.value=p.device&&devs.some(d=>d.deviceId===p.device)?p.device:cur;
-  $("#mic-gain").value=p.gain;$("#mic-gv").textContent=(p.gain>0?"+":"")+p.gain+" dB";
-  const outs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audiooutput"),os=$("#out-dev");os.textContent="";
-  outs.forEach(d=>{const o=el("option",null,d.label||"Speakers");o.value=d.deviceId;os.append(o)});os.value=p.out&&outs.some(d=>d.deviceId===p.out)?p.out:(outs[0]?outs[0].deviceId:"");
+  let err=null;
+  try{micStreamNow=await micStream()}catch(e){err=e}
+  let all=[];try{all=await navigator.mediaDevices.enumerateDevices()}catch(e){}
+  const devs=all.filter(d=>d.kind==="audioinput"),sel=$("#mic-dev");sel.textContent="";
+  const cur=micStreamNow?micStreamNow.getAudioTracks()[0].getSettings().deviceId:"";
+  devs.forEach((d,i)=>{const o=el("option",null,d.label||"Microphone "+(i+1));o.value=d.deviceId;sel.append(o)});
+  if(!devs.length){const o=el("option",null,"No microphone found");o.value="";sel.append(o)}
+  sel.value=p.device&&devs.some(d=>d.deviceId===p.device)?p.device:cur;
+  const outs=all.filter(d=>d.kind==="audiooutput"),os=$("#out-dev");os.textContent="";
+  outs.forEach((d,i)=>{const o=el("option",null,d.label||"Speakers "+(i+1));o.value=d.deviceId;os.append(o)});
+  os.value=p.out&&outs.some(d=>d.deviceId===p.out)?p.out:(outs[0]?outs[0].deviceId:"");
   os.disabled=!("setSinkId" in HTMLMediaElement.prototype);$("#out-vol").value=p.vol;$("#out-gv").textContent=p.vol+"%";
+  $("#mic-gain").value=p.gain;$("#mic-gv").textContent=(p.gain>0?"+":"")+p.gain+" dB";
+  if(err){const n=err.name||"";
+    msg.textContent=n==="NotAllowedError"||n==="SecurityError"?"The microphone is blocked. In Windows open Settings > Privacy & security > Microphone and turn on Microphone access and 'Let desktop apps access your microphone', then reopen this.":
+      n==="NotFoundError"||n==="OverconstrainedError"?"No microphone was found. Plug one in (or enable it in Windows Sound settings > Input) and reopen this.":
+      "Could not open the microphone ("+(n||"error")+(err.message?": "+err.message:"")+").";
+    return}
   micCtx=new (window.AudioContext||window.webkitAudioContext)();const an=micCtx.createAnalyser();an.fftSize=1024;micCtx.createMediaStreamSource(micStreamNow).connect(an);
   const buf=new Float32Array(an.fftSize);let peak=0,hold=0,clip=0;
   micTimer=setInterval(()=>{an.getFloatTimeDomainData(buf);const g=Math.pow(10,micPrefs().gain/20);let m=0;for(const v of buf)m=Math.max(m,Math.abs(v)*g);
