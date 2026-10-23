@@ -1685,6 +1685,13 @@ class UIMixin:
         cache[icao] = result
         return result
 
+    def studio_voices(self, folder: Path) -> dict[str, Path]:
+        """Voices that can be opened for editing: the usual ones, plus an airline folder that only has general PAs."""
+        found = list_voices(folder)
+        if DEFAULT_VOICE not in found and has_ogg(folder / MAIN_FOLDER):
+            found = {DEFAULT_VOICE: folder, **found}
+        return found
+
     def studio_snapshot(self, cfg: dict) -> dict:
         current = getattr(self, "studio_current", None)
         out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR),
@@ -1694,7 +1701,7 @@ class UIMixin:
             try:
                 for folder in sorted(airlines_root(cfg).iterdir(), key=lambda p: p.name.lower()):
                     if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name):
-                        for key, path in list_voices(folder).items():
+                        for key, path in self.studio_voices(folder).items():
                             info = voice_info(path, key)
                             out["library"].append({"icao": folder.name.upper(), "voice": key, "name": info["name"], "artist": info["artist"]})
             except OSError:
@@ -1717,7 +1724,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
-                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
         return out
@@ -1749,7 +1756,7 @@ class UIMixin:
             if name == "import":
                 icao = check_airline_code(str(data.get("icao", "")))
                 cfg = load_config()
-                found = list_voices(airline_folder(cfg, icao))
+                found = self.studio_voices(airline_folder(cfg, icao))
                 key = str(data.get("voice", ""))
                 if key not in found:
                     return {"error": "That pack is no longer in your library."}
@@ -1802,6 +1809,9 @@ class UIMixin:
                 fcac_studio.save(STUDIO_DIR, project)
                 if changed:
                     fcac_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+            elif name == "upgrade":
+                count = fcac_studio.upgrade_names(STUDIO_DIR, project)
+                return {"ok": True, "renamed": count}
             elif name == "mode":
                 fcac_studio.set_mode(STUDIO_DIR, project, str(data.get("slot", "")), str(data.get("mode", "")))
             elif name == "script":

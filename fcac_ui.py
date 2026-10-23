@@ -549,6 +549,12 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
   <div class="small" style="margin-top:6px">Windows lists FCAC in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
+<div class="modal" id="m-up"><div class="dialog" style="width:560px">
+  <h3>Upgrade to the new Fenix names</h3><p>These clips use Fenix's old names. Renaming them lets them use the new announcement types, tags and modes. Only your Studio copy changes now. When you press "Save changes to my library", the old-named files there are replaced by these.</p>
+  <div id="up-list" style="max-height:48vh;overflow:auto;margin-bottom:14px"></div>
+  <div class="small" style="margin-bottom:14px">The takeoff and landing versions share one new name and are told apart by flight-phase tags (PreFlight = before takeoff, Descent/Approach = before landing). That is our reading of Fenix's guide - test it in the sim.</div>
+  <div class="row"><button id="up-cancel">Not now</button><button class="primary" id="up-ok">Rename them</button></div>
+</div></div>
 <div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="prog"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
 
@@ -858,6 +864,7 @@ function slotRow(c,r){
     r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
   d.append(nm);
   if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom||r.music?r.script:"Say: "+r.script));
+  if(r.variants&&r.variants.length)d.append(el("div","st","Also has: "+r.variants.join(", ")));
   if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged":r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
@@ -913,6 +920,11 @@ function renderStudio(){
   card.append(ef);
   card.append(el("div","sd-meta",(c.target_pending?"Measuring the original announcements to set the loudness...":"Every clip is set to "+c.target+" LUFS, "+(c.target_count?"the average of "+c.target_count+" original announcements from "+c.target_source+".":"a standard level, because no original announcements were found.")+" Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time.")));
   root.append(card);
+  if(c.upgrades&&c.upgrades.length){const b=el("section","card");b.style.cssText="margin-top:16px;display:flex;gap:14px;align-items:center;justify-content:space-between";
+    b.append(el("div",null,c.upgrades.length+" clip"+(c.upgrades.length>1?"s use":" uses")+" Fenix's old file names (like CrewSeatsLanding). Upgrade them to the new names to use the new features."));
+    const ub=el("button","primary","Review upgrade");ub.onclick=()=>{const l=$("#up-list");l.textContent="";c.upgrades.forEach(u=>{const r=el("div","facts");const d=el("div");d.append(el("i",null,u.old),el("span",null,"→ "+u.new));r.append(d);l.append(r)});
+      $("#up-ok").onclick=async()=>{$("#m-up").classList.remove("show");const r=await studio("upgrade",pid(c));if(r.ok)toast("Renamed "+r.renamed+" clip"+(r.renamed==1?"":"s"))};$("#m-up").classList.add("show")};
+    b.append(ub);root.append(b)}
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
@@ -958,6 +970,7 @@ function renderJob(){
   $("#job-t").textContent=j.label;const bar=$("#job-bar"),pr=bar.parentElement;
   pr.classList.toggle("wait",j.fraction==null);if(j.fraction!=null)bar.style.width=Math.max(4,Math.round(j.fraction*100))+"%";
 }
+$("#up-cancel").onclick=()=>$("#m-up").classList.remove("show");
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();

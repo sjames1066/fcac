@@ -65,6 +65,45 @@ MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing")  # Prerecorded b
 MODES = ("Prerecorded", "Manual")
 
 
+# Fenix's old announcement names -> the new type and the flight-phase tags that keep the takeoff / landing split.
+# The mapping is inferred from the names and the trigger table in the Fenix developer guide (it publishes no list).
+BEFORE_TAKEOFF = ["PreFlight"]
+BEFORE_LANDING = ["Descent", "Approach"]
+LEGACY = {
+    "CrewSeatsTakeoff": ("CrewTakeSeats", BEFORE_TAKEOFF), "CrewSeatsLanding": ("CrewTakeSeats", BEFORE_LANDING),
+    "CallCabinSecureTakeoff": ("CabinSecured", BEFORE_TAKEOFF), "CallCabinSecureLanding": ("CabinSecured", BEFORE_LANDING),
+    "CabinDimTakeoff": ("CabinDim", []),            # one clip, now used for takeoff and landing
+    "FastenSeatbelt": ("SeatbeltSignOn", []), "DescentSeatbelts": ("DescentStarted", []),
+    "DisembarkStarted": ("DeboardingStarted", []),
+}
+
+
+def base_of(stem: str) -> str:
+    return re.split(r"[\[~]", stem, maxsplit=1)[0]
+
+
+def legacy_renames(folder: Path) -> list[tuple[str, str]]:
+    """(old file name, new file name) for every legacy-named clip in a folder; skips ones whose new name is taken."""
+    if not folder.is_dir():
+        return []
+    taken = {p.name.lower() for p in folder.iterdir()}
+    out = []
+    for path in sorted(folder.iterdir()):
+        if not path.is_file() or path.suffix.lower() != ".ogg":
+            continue
+        base = base_of(path.stem)
+        if base not in LEGACY:
+            continue
+        new_base, tags = LEGACY[base]
+        rest = path.stem[len(base):]                       # existing [tags] and ~custom name
+        head, tilde, name = rest.partition("~")
+        extra = "".join(f"[{t}]" for t in tags if f"[{t.lower()}]" not in head.lower())
+        new = f"{new_base}{head}{extra}{tilde}{name}.ogg"
+        if new.lower() not in taken:
+            out.append((path.name, new))
+    return out
+
+
 class StudioError(Exception):
     pass
 
@@ -224,17 +263,33 @@ def find_slot(project: dict, slot_id: str) -> dict:
     raise StudioError("Unknown recording slot.")
 
 
+def variants_of(pack: Path, slot: dict) -> list[str]:
+    """Tagged copies of an announcement in the pack, e.g. CrewTakeSeats[PreFlight].ogg for the CrewTakeSeats slot."""
+    folder = pack / slot["folder"]
+    if slot["folder"] != "main" or not folder.is_dir():
+        return []
+    return [p.name for p in sorted(folder.iterdir())
+            if p.is_file() and p.suffix.lower() == ".ogg" and p.name != slot["file"] and base_of(p.stem) == base_of(slot["stem"])
+            and not slot["stem"].startswith("BoardingWelcome")]
+
+
 def status(root: Path, project: dict) -> list[dict]:
     folder = project_dir(root, project["icao"], project["voice"])
     done = project.get("slots", {})
     rows = []
     for slot in hour_order(slot_list(project)):
         info = done.get(slot["id"])
-        have = info is not None and (folder / "pack" / slot["folder"] / slot["file"]).is_file()
+        have = (folder / "pack" / slot["folder"] / slot["file"]).is_file()
+        if have and info is None:
+            info = {"imported": True}   # a clip that arrived by renaming
+        have = have and info is not None
+        variants = variants_of(folder / "pack", slot)
+        if not have and variants:
+            have, info = True, {"imported": True}
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
                 "custom": slot["id"] in project.get("scripts", {})}
         rows.append({**slot, "music": bool(slot.get("music")), "done": have, "seconds": info.get("seconds") if have else None,
-                     "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported"))})
+                     "lufs": info.get("lufs_out") if have else None, "imported": bool(have and info.get("imported")), "variants": variants})
     return rows
 
 
@@ -369,6 +424,8 @@ def set_mode(root: Path, project: dict, slot_id: str, mode: str) -> None:
 def delete_slot(root: Path, project: dict, slot_id: str) -> None:
     slot = find_slot(project, slot_id)
     folder = project_dir(root, project["icao"], project["voice"])
+    for name in variants_of(folder / "pack", slot):
+        (folder / "pack" / slot["folder"] / name).unlink(missing_ok=True)
     for path in (folder / "raw").glob(f"{slot['folder']}__{slot['stem']}.*"):
         path.unlink()
     (folder / "pack" / slot["folder"] / slot["file"]).unlink(missing_ok=True)
@@ -380,6 +437,23 @@ def processed_file(root: Path, project: dict, slot_id: str) -> Path | None:
     slot = find_slot(project, slot_id)
     path = project_dir(root, project["icao"], project["voice"]) / "pack" / slot["folder"] / slot["file"]
     return path if path.is_file() else None
+
+
+def upgrade_preview(root: Path, project: dict) -> list[dict]:
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack" / "main"
+    return [{"old": a, "new": b} for a, b in legacy_renames(pack)]
+
+
+def upgrade_names(root: Path, project: dict) -> int:
+    """Rename the legacy-named clips in the project's copy (never the library) to the new Fenix names."""
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack" / "main"
+    done = 0
+    for old, new in legacy_renames(pack):
+        (pack / old).rename(pack / new)
+        project.setdefault("replaced", []).append(old)
+        done += 1
+    save(root, project)
+    return done
 
 
 # --------------------------------------------------------------------------- export
@@ -486,6 +560,11 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     if not src.is_dir() or not any(src.rglob("*.ogg")):
         raise StudioError("Record something first.")
     shutil.copytree(src, dest, dirs_exist_ok=True)
+    if origin and dest == origin:  # the old-named copies of upgraded clips are replaced, not left beside the new ones
+        for old in project.get("replaced", []):
+            (dest / "main" / old).unlink(missing_ok=True)
+        project["replaced"] = []
+        save(root, project)
     music = sorted((src / "main").glob("BoardingMusic*.ogg"))
     if music:  # boarding music is the airline's, not a voice's: it goes where FCAC copies the general PAs from
         (airline_dir / "main").mkdir(parents=True, exist_ok=True)
