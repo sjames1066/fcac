@@ -422,6 +422,8 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .slot .sc.custom::before{content:"script · ";color:var(--magenta);font-size:12px}
 #m-mic select{width:100%}
 #view-studio>.section-head:not(:first-child){margin-top:30px}
+.prog.wait i{width:40%!important;animation:slide 1.1s ease-in-out infinite alternate}
+@keyframes slide{from{margin-left:0}to{margin-left:60%}}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
@@ -547,6 +549,7 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
   <div class="small" style="margin-top:6px">Windows lists FCAC in its volume mixer under the browser that shows this window (Microsoft Edge or Chrome), and only while a sound is playing.</div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
+<div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="prog"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -894,7 +897,7 @@ function renderStudio(){
   [[true,"Cabin-PA sound on","Band-limited speaker voice with light compression, like the original announcements. Recommended."],[false,"Leave my recording as it is","Only the loudness is matched."]].forEach(([v,t,sub])=>{
     const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});
   card.append(ef);
-  card.append(el("div","sd-meta","Every clip is set to "+c.target+" LUFS, "+(c.target_count?"the average of "+c.target_count+" original announcements from "+c.target_source+".":"a standard level, because no original announcements were found.")+" Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time."));
+  card.append(el("div","sd-meta",(c.target_pending?"Measuring the original announcements to set the loudness...":"Every clip is set to "+c.target+" LUFS, "+(c.target_count?"the average of "+c.target_count+" original announcements from "+c.target_source+".":"a standard level, because no original announcements were found.")+" Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time.")));
   root.append(card);
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
@@ -936,14 +939,19 @@ function renderStudio(){
   bar2.append(dis,fol,use,ex);root.append(bar2);
 }
 
+function renderJob(){
+  const j=snap&&snap.studio&&snap.studio.job,m=$("#m-job");m.classList.toggle("show",!!j);if(!j)return;
+  $("#job-t").textContent=j.label;const bar=$("#job-bar"),pr=bar.parentElement;
+  pr.classList.toggle("wait",j.fraction==null);if(j.fraction!=null)bar.style.width=Math.max(4,Math.round(j.fraction*100))+"%";
+}
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderDebug(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderDebug(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
     if(snap.setup_needed&&!snap.welcome&&!setupShown){setupShown=true;openName()}
   }catch(e){}
-  setTimeout(tick,(snap&&(snap.busy||snap.prompt))?500:1500);
+  setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }
 tick();
 </script>

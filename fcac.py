@@ -1654,6 +1654,17 @@ class UIMixin:
         cache = self.__dict__.setdefault("_studio_targets", {})
         if icao in cache:
             return cache[icao]
+        self.studio_job("Measuring the original announcements", 0.0)
+        try:
+            return self._measure_target(cfg, icao, cache)
+        finally:
+            self.studio_job(None)
+
+    def studio_job(self, label: str | None, fraction: float | None = None) -> None:
+        """What the Studio is busy with, shown as a loading bar in the window."""
+        self._studio_job = {"label": label, "fraction": fraction} if label else None
+
+    def _measure_target(self, cfg: dict, icao: str, cache: dict) -> tuple[float, int, str]:
         sources = [("this airline's own announcements", airline_folder(cfg, icao) / MAIN_FOLDER), ("saved original announcements", GENERIC_DIR / icao)]
         try:
             sources.append(("your Fenix airline packs", airline_packs_dir(cfg)))
@@ -1667,7 +1678,7 @@ class UIMixin:
                 files = []
             if files:
                 step = max(1, len(files) // 10)
-                value, count = fcac_studio.reference_loudness(files[::step])
+                value, count = fcac_studio.reference_loudness(files[::step], lambda f: self.studio_job("Measuring the original announcements", f))
                 if count:
                     result = (value, count, label)
                     break
@@ -1676,7 +1687,8 @@ class UIMixin:
 
     def studio_snapshot(self, cfg: dict) -> dict:
         current = getattr(self, "studio_current", None)
-        out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR)}
+        out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR),
+               "job": getattr(self, "_studio_job", None)}
         if not current:  # packs already in the library that can be opened for editing
             out["library"] = []
             try:
@@ -1692,7 +1704,12 @@ class UIMixin:
                 project = fcac_studio.load(STUDIO_DIR, *current)
             except fcac_studio.StudioError:
                 return out
-            target, count, label = self.studio_target(cfg, project["icao"])
+            if project["icao"] not in self.__dict__.setdefault("_studio_targets", {}):
+                if not getattr(self, "_studio_job", None):  # measure in the background so the window stays responsive
+                    threading.Thread(target=self.studio_target, args=(cfg, project["icao"]), daemon=True).start()
+                target, count, label = fcac_studio.DEFAULT_TARGET, 0, "measuring..."
+            else:
+                target, count, label = self.studio_target(cfg, project["icao"])
             rows = fcac_studio.status(STUDIO_DIR, project)
             out["current"] = {
                 "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
@@ -1700,7 +1717,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
-                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
         return out
@@ -1737,8 +1754,22 @@ class UIMixin:
                 if key not in found:
                     return {"error": "That pack is no longer in your library."}
                 names = {e["icao"]: e["name"] for e in self.catalog}
-                project = fcac_studio.import_pack(STUDIO_DIR, icao, names.get(icao, icao), found[key], key)
-                self.studio_current = (project["icao"], project["voice"])
+                if getattr(self, "_studio_job", None):
+                    return {"error": "Still busy - wait for the loading bar to finish."}
+                self.studio_job("Opening the pack - copying its clips", 0.0)
+
+                def work() -> None:
+                    try:
+                        project = fcac_studio.import_pack(STUDIO_DIR, icao, names.get(icao, icao), found[key], key,
+                                                          lambda f: self.studio_job("Opening the pack - copying its clips", f))
+                        self.studio_current = (project["icao"], project["voice"])
+                    except (fcac_studio.StudioError, OSError) as exc:
+                        log.warning("Could not open pack for editing: %s", exc)
+                        self.set_status(f"Could not open that pack: {exc}", notify=False)
+                    finally:
+                        self.studio_job(None)
+
+                threading.Thread(target=work, daemon=True).start()
                 return {"ok": True}
             if name == "open":
                 project = self.studio_project(data)

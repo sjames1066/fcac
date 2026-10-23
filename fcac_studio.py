@@ -230,11 +230,13 @@ def status(root: Path, project: dict) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- loudness reference
-def reference_loudness(files: list[Path]) -> tuple[float, int]:
+def reference_loudness(files: list[Path], progress=None) -> tuple[float, int]:
     """The loudness of the original Fenix announcements: the median of their integrated loudness -> (LUFS, how many
     were measured). Falls back to DEFAULT_TARGET."""
     values = []
-    for path in files[:12]:
+    for i, path in enumerate(files[:12]):
+        if progress:
+            progress(i / max(1, min(len(files), 12)))
         try:
             value = fcac_audio.file_loudness(path)
         except Exception:
@@ -395,7 +397,7 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
 IMPORT_FOLDERS = ("main", "time", "parts", "extra", "dep", "dest", "fuel")
 
 
-def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str) -> dict:
+def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str, progress=None) -> dict:
     """Open an existing voice folder (Airlines\\<ICAO> itself or voices\\<Name>) for editing: its clips are copied
     into a new project, untouched, and show as done. Opens the existing project if there already is one."""
     info = {}
@@ -435,7 +437,9 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["music"].append(stem[14:])
     project["airports"].sort()
     pack = project_dir(root, icao, voice) / "pack"
-    for path, folder in files:
+    for i, (path, folder) in enumerate(files):
+        if progress:
+            progress(i / len(files))
         (pack / folder).mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, pack / folder / path.name)
     for slot in slot_list(project):
