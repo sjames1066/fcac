@@ -38,9 +38,11 @@ GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement t
     ("DisarmDoors", "DisarmDoors", "Cabin crew, disarm doors and cross-check."),
     ("PreSafetyBriefing", "PreSafetyBriefing", "The opening of the safety briefing, before the demonstration."),
     ("SafetyBriefing", "SafetyBriefing", "The safety demonstration."),
-    ("CrewTakeSeats", "CrewTakeSeats", "Cabin crew, take your seats for takeoff / landing."),
+    ("CrewTakeSeats[PreFlight]", "CrewTakeSeats - takeoff", "Cabin crew, take your seats for takeoff. (Tagged [PreFlight]: used before takeoff.)"),
+    ("CrewTakeSeats[Descent][Approach]", "CrewTakeSeats - landing", "Cabin crew, take your seats for landing. (Tagged [Descent][Approach]: used before landing.)"),
     ("CabinDim", "CabinDim", "We will dim the cabin lights for takeoff / landing."),
-    ("CabinSecured", "CabinSecured", "Interphone to the cockpit: cabin secure for takeoff / landing."),
+    ("CabinSecured[PreFlight]", "CabinSecured - takeoff", "Interphone to the cockpit: cabin secure for takeoff. (Tagged [PreFlight].)"),
+    ("CabinSecured[Descent][Approach]", "CabinSecured - landing", "Interphone to the cockpit: cabin secure for landing. (Tagged [Descent][Approach].)"),
     ("AfterTakeoff", "AfterTakeoff", "PA after takeoff, once past acceleration altitude."),
     ("SeatbeltSignOn", "SeatbeltSignOn", "The seatbelt signs have been switched on."),
     ("SeatbeltSignOff", "SeatbeltSignOff", "The seatbelt signs have been switched off."),
@@ -263,13 +265,15 @@ def find_slot(project: dict, slot_id: str) -> dict:
     raise StudioError("Unknown recording slot.")
 
 
-def variants_of(pack: Path, slot: dict) -> list[str]:
+def variants_of(pack: Path, slot: dict, known: set[str] = frozenset()) -> list[str]:
     """Tagged copies of an announcement in the pack, e.g. CrewTakeSeats[PreFlight].ogg for the CrewTakeSeats slot."""
     folder = pack / slot["folder"]
     if slot["folder"] != "main" or not folder.is_dir():
         return []
     return [p.name for p in sorted(folder.iterdir())
-            if p.is_file() and p.suffix.lower() == ".ogg" and p.name != slot["file"] and base_of(p.stem) == base_of(slot["stem"])
+            if p.is_file() and p.suffix.lower() == ".ogg" and p.name != slot["file"] and p.name not in known
+            and base_of(p.stem) == base_of(slot["stem"])
+            and {t.lower() for t in re.findall(r"\[(.*?)\]", slot["stem"])} <= {t.lower() for t in re.findall(r"\[(.*?)\]", p.stem)}
             and not slot["stem"].startswith("BoardingWelcome")]
 
 
@@ -277,13 +281,15 @@ def status(root: Path, project: dict) -> list[dict]:
     folder = project_dir(root, project["icao"], project["voice"])
     done = project.get("slots", {})
     rows = []
-    for slot in hour_order(slot_list(project)):
+    all_slots = hour_order(slot_list(project))
+    known = {s["file"] for s in all_slots}
+    for slot in all_slots:
         info = done.get(slot["id"])
         have = (folder / "pack" / slot["folder"] / slot["file"]).is_file()
         if have and info is None:
             info = {"imported": True}   # a clip that arrived by renaming
         have = have and info is not None
-        variants = variants_of(folder / "pack", slot)
+        variants = variants_of(folder / "pack", slot, known)
         if not have and variants:
             have, info = True, {"imported": True}
         slot = {**slot, "script": project.get("scripts", {}).get(slot["id"], slot["script"]),
@@ -424,7 +430,7 @@ def set_mode(root: Path, project: dict, slot_id: str, mode: str) -> None:
 def delete_slot(root: Path, project: dict, slot_id: str) -> None:
     slot = find_slot(project, slot_id)
     folder = project_dir(root, project["icao"], project["voice"])
-    for name in variants_of(folder / "pack", slot):
+    for name in variants_of(folder / "pack", slot, {s["file"] for s in slot_list(project)}):
         (folder / "pack" / slot["folder"] / name).unlink(missing_ok=True)
     for path in (folder / "raw").glob(f"{slot['folder']}__{slot['stem']}.*"):
         path.unlink()
