@@ -1794,6 +1794,17 @@ class UIMixin:
             if name == "open":
                 project = self.studio_project(data)
                 self.studio_current = (project["icao"], project["voice"])
+                try:   # recordings that were saved but never processed (a crash, or an old bug) are finished now
+                    todo = fcac_studio.unprocessed(STUDIO_DIR, project)
+                    if todo:
+                        target = self.studio_target(load_config(), project["icao"])[0]
+                        for slot in todo:
+                            try:
+                                fcac_studio.process_slot(STUDIO_DIR, project, slot, target)
+                            except fcac_studio.StudioError:
+                                pass
+                except Exception:
+                    log.exception("Could not finish unprocessed recordings")
                 return {"ok": True}
             if name == "discard":
                 project = self.studio_project(data)

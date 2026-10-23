@@ -8,7 +8,6 @@ Airlines\\<ICAO>) and project.json.
 
 from __future__ import annotations
 
-import glob as _glob
 import hashlib
 import json
 import re
@@ -83,9 +82,10 @@ LEGACY = {
 }
 
 
-def _raw_glob(slot: dict) -> str:
-    """Glob for a slot's raw takes. Stems like CrewTakeSeats[PreFlight] contain [ ], which glob would read as a character class."""
-    return _glob.escape(f"{slot['folder']}__{slot['stem']}") + ".*"
+def raw_takes(raw_dir: Path, slot: dict) -> list[Path]:
+    """The raw recordings of a slot. Compared by name, not by glob: stems like CrewTakeSeats[PreFlight] contain [ ]."""
+    prefix = f"{slot['folder']}__{slot['stem']}"
+    return [p for p in raw_dir.iterdir() if p.is_file() and p.stem == prefix] if raw_dir.is_dir() else []
 
 
 def base_of(stem: str) -> str:
@@ -420,7 +420,7 @@ def store_raw(root: Path, project: dict, slot_id: str, body: bytes, filename: st
     folder = project_dir(root, project["icao"], project["voice"])
     raw = folder / "raw"
     raw.mkdir(parents=True, exist_ok=True)
-    for old in raw.glob(_raw_glob(slot)):
+    for old in raw_takes(raw, slot):
         old.unlink()
     path = raw / f"{slot['folder']}__{slot['stem']}{ext}"
     path.write_bytes(body)
@@ -429,7 +429,7 @@ def store_raw(root: Path, project: dict, slot_id: str, body: bytes, filename: st
 
 def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
     folder = project_dir(root, project["icao"], project["voice"])
-    raws = list((folder / "raw").glob(_raw_glob(slot)))
+    raws = raw_takes(folder / "raw", slot)
     if not raws:
         raise StudioError("Nothing recorded for that yet.")
     try:
@@ -444,6 +444,14 @@ def process_slot(root: Path, project: dict, slot: dict, target: float) -> dict:
     project.setdefault("slots", {})[slot["id"]] = result
     save(root, project)
     return result
+
+
+def unprocessed(root: Path, project: dict) -> list[dict]:
+    """Slots whose recording was saved but never turned into a clip (for example after a crash or an older bug)."""
+    raw = project_dir(root, project["icao"], project["voice"]) / "raw"
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack"
+    return [sl for sl in slot_list(project)
+            if sl["id"] not in project.get("slots", {}) and not (pack / sl["folder"] / sl["file"]).is_file() and raw_takes(raw, sl)]
 
 
 def reprocess_all(root: Path, project: dict, target: float) -> int:
@@ -478,7 +486,7 @@ def delete_slot(root: Path, project: dict, slot_id: str) -> None:
     folder = project_dir(root, project["icao"], project["voice"])
     for name in variants_of(folder / "pack", slot, {s["file"] for s in slot_list(project)}):
         (folder / "pack" / slot["folder"] / name).unlink(missing_ok=True)
-    for path in (folder / "raw").glob(_raw_glob(slot)):
+    for path in raw_takes(folder / "raw", slot):
         path.unlink()
     (folder / "pack" / slot["folder"] / slot["file"]).unlink(missing_ok=True)
     project.get("slots", {}).pop(slot_id, None)
