@@ -407,6 +407,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .sd-meta{color:var(--muted);font-size:12.5px;margin-top:12px;line-height:1.5}
 .prog{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
 .prog i{display:block;height:100%;background:var(--grad)}
+.keepopen{margin:14px 0 0;padding:12px 14px;border:1px solid rgba(240,200,60,.55);background:rgba(240,200,60,.09);border-radius:12px}
+.keepopen.slim{margin:12px 0 22px;padding:9px 14px}
+.keepopen.slim b{display:inline;margin:0 8px 0 0}
+.keepopen b{display:block;color:#f0c83c;margin-bottom:4px}
+.keepopen span{color:var(--muted);font-size:13px;line-height:1.45}
 .logorow{display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap}
 .logorow > div{flex:1;min-width:200px}
 .logoimg{width:56px;height:56px;border-radius:14px;object-fit:cover;background:var(--surface2)}
@@ -465,6 +470,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button></nav>
   <div id="view-main">
   <section class="card hero" id="hero"></section>
+  <div class="keepopen slim"><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span></div>
   <pre id="debug" class="debug" style="display:none"></pre>
 
   <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
@@ -508,6 +514,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div><b>2 &middot; Get some announcements</b><i>Install an airline pack from the Packs list on the main screen, or record your own in the Pack Studio tab.</i></div>
     <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. FCAC updates your announcements by itself when you start MSFS, or any time you press Update now.</i></div>
   </div>
+  <div class="keepopen"><b>Keep FCAC running for the whole flight</b><span>FCAC prepares your announcements as the flight goes on, including building the landing announcement with the real local time once you have landed. If you quit it (or close the window while "quit when I close the window" is on in Settings), those announcements will not be updated. Leave it running in the system tray from before boarding until you have parked.</span></div>
   <label class="small" for="w-name" style="display:block;margin:16px 0 6px;font-weight:600;color:var(--text)">Your SimBrief username (the name you log in with, not the numeric ID)</label>
   <input type="text" id="w-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false">
   <div class="small" style="margin:18px 0 6px"><b>What FCAC changes on this PC</b></div>
@@ -516,7 +523,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div><b>Your originals are kept</b><span id="w-orig"></span><i>The first time FCAC changes a pack it saves a copy of the original files. Restore them any time from the tray icon menu &rarr; Restore original announcements.</i></div>
     <div><b>Your recordings</b><span id="w-rec"></span><i>Airline packs you install, and your own recordings, are stored here.</i></div>
   </div>
-  <p class="small" style="margin:14px 0 18px">FCAC keeps running in the system tray (near the clock). Close this window whenever you like and open it again by double-clicking the tray icon.</p>
+  <p class="small" style="margin:14px 0 18px">Closing this window is fine: FCAC keeps running in the system tray (near the clock). Open it again by double-clicking the tray icon.</p>
   <div class="row"><button class="primary" id="w-ok">Get started</button></div>
 </div></div>
 
