@@ -45,6 +45,7 @@ try:
     import fcac_audio  # joins announcement pieces (needs numpy + soundfile)
 except Exception:  # missing libraries must not stop the rest of the app
     fcac_audio = None
+import fcac_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports fcac_audio itself
 
 APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
 VERSION = "1.0.1"
@@ -69,6 +70,7 @@ DATA_DIR = _data_dir()
 GENERIC_DIR = DATA_DIR / "generic"    # untouched copy of an airline's generic announcements (saved before FCAC changes them)
 BACKUPS_DIR = DATA_DIR / "backups"    # packs that were already in the Fenix folder before we installed ours
 STATE_PATH = DATA_DIR / "state.json"
+STUDIO_DIR = DATA_DIR / "studio"        # Pack Studio projects (recordings, processed clips, exports)
 LOG_PATH = DATA_DIR / "announcer.log"
 for _d in (DATA_DIR, GENERIC_DIR, BACKUPS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -917,18 +919,20 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
 def voice_info(path: Path, key: str) -> dict:
     """What the window shows for a voice: voice.json in its folder ({"name","artist","credit_url","accent",
     "description"}, all optional). Without it, the folder name is the name."""
-    info = {"id": key, "name": key, "artist": "", "credit_url": "", "accent": "", "description": ""}
+    info = {"id": key, "name": key, "artist": "", "credit_url": "", "donate_url": "", "accent": "", "description": ""}
     try:
         data = json.loads((path / "voice.json").read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return info
     if isinstance(data, dict):
-        for field in ("name", "artist", "credit_url", "accent", "description"):
+        for field in ("name", "artist", "credit_url", "donate_url", "accent", "description"):
             value = str(data.get(field, "")).strip()[:200]
             if value:
                 info[field] = value
     if not _is_http(info["credit_url"]):
         info["credit_url"] = ""  # "TBC" and the like: nothing to link to
+    if not _is_http(info["donate_url"]):
+        info["donate_url"] = ""
     return info
 
 
@@ -1439,6 +1443,7 @@ class UIMixin:
             "debug": DEBUG_BUFFER.lines[-14:] if DEBUG else None,
             "voices": voices,
             "welcome": self._welcome_info(cfg, state),
+            "studio": self.studio_snapshot(cfg),
             "settings": {
                 "on_close": cfg.get("on_close", "tray"),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
@@ -1633,10 +1638,134 @@ class UIMixin:
             if prompt and prompt["id"] == data.get("id") and data.get("choice") in prompt["options"]:
                 prompt["answer"] = (data["choice"], bool(data.get("remember")))
                 prompt["event"].set()
+        elif name.startswith("studio_"):
+            return self.studio_action(name[7:], data)
         elif name == "open":
             self._open_folder(str(data.get("what", "")))
         else:
             return {"error": "unknown action"}
+        return {"ok": True}
+
+    # Pack Studio ---------------------------------------------------------
+    def studio_target(self, cfg: dict, icao: str) -> tuple[float, int, str]:
+        """Loudness (LUFS) to set recordings to = that of the original announcements -> (LUFS, clips measured, source)."""
+        cache = self.__dict__.setdefault("_studio_targets", {})
+        if icao in cache:
+            return cache[icao]
+        sources = [("this airline's own announcements", airline_folder(cfg, icao) / MAIN_FOLDER), ("saved original announcements", GENERIC_DIR / icao)]
+        try:
+            sources.append(("your Fenix airline packs", airline_packs_dir(cfg)))
+        except (AppError, OSError):
+            pass
+        result = (fcac_studio.DEFAULT_TARGET, 0, "")
+        for label, folder in sources:
+            try:
+                files = sorted(p for p in folder.rglob("*.ogg") if not is_modular(p.name)) if folder.is_dir() else []
+            except OSError:
+                files = []
+            if files:
+                step = max(1, len(files) // 10)
+                value, count = fcac_studio.reference_loudness(files[::step])
+                if count:
+                    result = (value, count, label)
+                    break
+        cache[icao] = result
+        return result
+
+    def studio_snapshot(self, cfg: dict) -> dict:
+        current = getattr(self, "studio_current", None)
+        out = {"projects": fcac_studio.list_projects(STUDIO_DIR), "current": None, "folder": str(STUDIO_DIR)}
+        if current:
+            try:
+                project = fcac_studio.load(STUDIO_DIR, *current)
+            except fcac_studio.StudioError:
+                return out
+            target, count, label = self.studio_target(cfg, project["icao"])
+            rows = fcac_studio.status(STUDIO_DIR, project)
+            out["current"] = {
+                "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
+                "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
+                "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
+                "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
+                "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"],
+                "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "target": target, "target_count": count, "target_source": label,
+                "done": sum(1 for r in rows if r["done"]), "total": len(rows)}
+        return out
+
+    def studio_project(self, data: dict) -> dict:
+        return fcac_studio.load(STUDIO_DIR, check_airline_code(str(data.get("icao", ""))), str(data.get("voice", "")))
+
+    def studio_upload(self, icao: str, voice: str, slot: str, filename: str, body: bytes) -> dict:
+        try:
+            project = fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice)
+            target = self.studio_target(load_config(), project["icao"])[0]
+            return {"ok": True, **fcac_studio.store_raw(STUDIO_DIR, project, slot, body, filename, target)}
+        except (fcac_studio.StudioError, AppError) as exc:
+            return {"error": str(exc)}
+
+    def studio_audio(self, icao: str, voice: str, slot: str) -> bytes | None:
+        try:
+            path = fcac_studio.processed_file(STUDIO_DIR, fcac_studio.load(STUDIO_DIR, check_airline_code(icao), voice), slot)
+            return path.read_bytes() if path else None
+        except (fcac_studio.StudioError, AppError, OSError):
+            return None
+
+    def studio_action(self, name: str, data: dict) -> dict:
+        try:
+            if name == "create":
+                project = fcac_studio.create(STUDIO_DIR, str(data.get("icao", "")), str(data.get("airline", "")), str(data.get("voice", "")))
+                self.studio_current = (project["icao"], project["voice"])
+                return {"ok": True}
+            if name == "open":
+                project = self.studio_project(data)
+                self.studio_current = (project["icao"], project["voice"])
+                return {"ok": True}
+            if name == "close":
+                self.studio_current = None
+                return {"ok": True}
+            project = self.studio_project(data)
+            cfg = load_config()
+            if name == "details":
+                for key, limit in (("artist", 80), ("accent", 40), ("description", 200), ("version", 20)):
+                    if key in data:
+                        project[key] = str(data[key]).strip()[:limit]
+                for key in ("credit_url", "donate_url"):
+                    if key in data:
+                        value = str(data[key]).strip()[:300]
+                        if value and not _is_http(value):
+                            return {"error": "Links must start with http:// or https://"}
+                        project[key] = value
+                effect = bool(data.get("effect", project.get("effect", True)))
+                changed = effect != bool(project.get("effect", True))
+                project["effect"] = effect
+                fcac_studio.save(STUDIO_DIR, project)
+                if changed:
+                    fcac_studio.reprocess_all(STUDIO_DIR, project, self.studio_target(cfg, project["icao"])[0])
+            elif name == "airport":
+                (fcac_studio.remove_airport if data.get("remove") else fcac_studio.add_airport)(STUDIO_DIR, project, str(data.get("code", "")))
+            elif name == "extra":
+                (fcac_studio.remove_extra if data.get("remove") else fcac_studio.add_extra)(STUDIO_DIR, project, str(data.get("name", "")))
+            elif name == "delete":
+                fcac_studio.delete_slot(STUDIO_DIR, project, str(data.get("slot", "")))
+            elif name == "export":
+                result = fcac_studio.export(STUDIO_DIR, project, STUDIO_DIR / "exports")
+                open_path(Path(result["zip"]).parent)
+                return {"ok": True, **result}
+            elif name == "install":
+                dest = fcac_studio.install_to_library(STUDIO_DIR, project, airline_folder(cfg, project["icao"]))
+                state = load_state()
+                state.pop("last", None)
+                save_state(state)
+                self.wake.set()
+                return {"ok": True, "path": str(dest)}
+            elif name == "folder":
+                folder = fcac_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"])
+                open_path(folder)
+            else:
+                return {"error": "unknown action"}
+        except (fcac_studio.StudioError, AppError, OSError) as exc:
+            return {"error": str(exc)}
         return {"ok": True}
 
     def _open_folder(self, what: str) -> None:

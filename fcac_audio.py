@@ -127,3 +127,126 @@ def join(paths: list[Path], out: Path, pause_ms: int = 60) -> None:
         parts.append(piece)
     out.parent.mkdir(parents=True, exist_ok=True)
     _write(out, np.concatenate(parts), rate)
+
+
+# --------------------------------------------------------------------------- loudness and the cabin-PA sound
+def _biquad_response(b: tuple, a: tuple, freqs: np.ndarray, rate: int) -> np.ndarray:
+    w = 2 * np.pi * freqs / rate
+    z1, z2 = np.exp(-1j * w), np.exp(-2j * w)
+    return (b[0] + b[1] * z1 + b[2] * z2) / (1 + a[0] * z1 + a[1] * z2)
+
+
+def _k_weight_response(freqs: np.ndarray, rate: int) -> np.ndarray:
+    """ITU-R BS.1770 K-weighting (high shelf + 38 Hz high-pass) as a frequency response."""
+    k = np.tan(np.pi * 1681.974450955533 / rate)
+    q, vh = 0.7071752369554196, 10 ** (3.999843853973347 / 20)
+    vb = vh ** 0.4996667741545416
+    a0 = 1 + k / q + k * k
+    shelf_b = ((vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0)
+    shelf_a = (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0)
+    k = np.tan(np.pi * 38.13547087602444 / rate)
+    q = 0.5003270373238773
+    a0 = 1 + k / q + k * k
+    return _biquad_response(shelf_b, shelf_a, freqs, rate) * _biquad_response(
+        (1.0, -2.0, 1.0), (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0), freqs, rate)
+
+
+def _apply_response(x: np.ndarray, rate: int, response) -> np.ndarray:
+    """Filter a mono signal by multiplying its spectrum by response(freqs) (zero phase)."""
+    n = len(x)
+    size = 1 << int(np.ceil(np.log2(n + rate // 4)))
+    spec = np.fft.rfft(x, size)
+    spec *= response(np.fft.rfftfreq(size, 1.0 / rate))
+    return np.fft.irfft(spec, size)[:n].astype("float32")
+
+
+def loudness_lufs(data: np.ndarray, rate: int) -> float | None:
+    """Integrated loudness (ITU-R BS.1770-4 with gating) of float audio [frames, channels]. None for silence."""
+    if len(data) == 0:
+        return None
+    weighted = [_apply_response(data[:, c], rate, lambda f: np.abs(_k_weight_response(f, rate)))
+                for c in range(data.shape[1])]
+    block = min(int(0.4 * rate), len(data))
+    hop = max(1, int(0.1 * rate))
+    starts = range(0, max(1, len(data) - block + 1), hop)
+    energy = np.array([sum(float(np.mean(w[s:s + block] ** 2)) for w in weighted) for s in starts])
+    loud = -0.691 + 10 * np.log10(np.maximum(energy, 1e-12))
+    kept = energy[loud > -70.0]
+    if len(kept) == 0:
+        return None
+    relative = -0.691 + 10 * np.log10(kept.mean()) - 10.0
+    kept = energy[loud > max(-70.0, relative)]
+    if len(kept) == 0:
+        return None
+    return float(-0.691 + 10 * np.log10(kept.mean()))
+
+
+def file_loudness(path: Path) -> float | None:
+    data, rate = _read(Path(path))
+    return loudness_lufs(data, rate)
+
+
+def _compress(x: np.ndarray, rate: int, threshold_db: float = -26.0, ratio: float = 3.0) -> np.ndarray:
+    """Gentle feed-forward compressor: evens out loud and quiet words."""
+    step = max(1, int(rate * 0.0025))
+    frames = len(x) // step + 1
+    padded = np.zeros(frames * step, dtype="float32")
+    padded[:len(x)] = x
+    rms = np.sqrt(np.mean(padded.reshape(frames, step) ** 2, axis=1) + 1e-12)
+    attack, release = np.exp(-step / (rate * 0.005)), np.exp(-step / (rate * 0.12))
+    env, level = np.empty(frames, dtype="float32"), 0.0
+    for i, v in enumerate(rms):  # peak-following envelope, fast up and slow down
+        level = attack * level + (1 - attack) * v if v > level else release * level + (1 - release) * v
+        env[i] = level
+    over = np.maximum(20 * np.log10(env + 1e-9) - threshold_db, 0.0)
+    gain = 10 ** (-over * (1 - 1 / ratio) / 20)
+    gain = np.interp(np.arange(len(x)), np.arange(frames) * step + step / 2, gain)
+    return (x * gain).astype("float32")
+
+
+def pa_effect(data: np.ndarray, rate: int) -> np.ndarray:
+    """The FCAC cabin-PA sound: band-limited speaker voice, a little presence, gentle compression and warmth."""
+    mono = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+
+    def shape(f):
+        f = np.maximum(f, 1.0)
+        high_pass = f ** 2 / np.sqrt(f ** 4 + 300.0 ** 4)            # 300 Hz, 2nd order
+        low_pass = 1.0 / np.sqrt(1.0 + (f / 4200.0) ** 8)             # 4.2 kHz, 4th order
+        presence = 1.0 + 0.6 * np.exp(-0.5 * (np.log2(f / 1800.0) / 0.55) ** 2)  # about +4 dB near 1.8 kHz
+        return high_pass * low_pass * presence
+
+    y = _apply_response(mono.astype("float32"), rate, shape)
+    peak = float(np.max(np.abs(y))) or 1.0
+    y = _compress(y / peak * 0.5, rate)
+    drive = 1.8
+    y = np.tanh(drive * y) / np.tanh(drive)  # soft saturation
+    return y[:, None].astype("float32")
+
+
+def _limit(x: np.ndarray, ceiling: float = 0.89) -> np.ndarray:
+    knee = 0.7
+    mag = np.abs(x)
+    over = mag > knee
+    out = x.copy()
+    out[over] = np.sign(x[over]) * (knee + (ceiling - knee) * np.tanh((mag[over] - knee) / (ceiling - knee)))
+    return out
+
+
+def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) -> dict:
+    """Read any audio file, optionally apply the PA sound, set its loudness to target_lufs and save an .ogg.
+    Returns {"seconds", "lufs_in", "lufs_out"}."""
+    data, rate = _read(Path(src))
+    data = _trim(data, rate, 40)
+    lufs_in = loudness_lufs(data, rate)
+    if effect:
+        data = pa_effect(data, rate)
+    now = loudness_lufs(data, rate)
+    if now is not None:
+        data = data * float(10 ** ((target_lufs - now) / 20))
+    data = _fade(_limit(data), rate, 8)
+    lufs_out = loudness_lufs(data, rate)
+    Path(dst).parent.mkdir(parents=True, exist_ok=True)
+    _write(Path(dst), data, rate)
+    return {"seconds": round(len(data) / rate, 2),
+            "lufs_in": None if lufs_in is None else round(lufs_in, 1),
+            "lufs_out": None if lufs_out is None else round(lufs_out, 1)}

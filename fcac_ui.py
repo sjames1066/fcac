@@ -163,7 +163,8 @@ class UIServer:
             def do_GET(self) -> None:  # noqa: N802
                 if not self._allowed():
                     return
-                path = urlparse(self.path).path
+                parsed = urlparse(self.path)
+                path = parsed.path
                 try:
                     if path == "/":
                         self._send(200, server.page().encode("utf-8"), "text/html; charset=utf-8")
@@ -175,6 +176,13 @@ class UIServer:
                         self._send(200, data, mime)
                     elif path == "/icon.png":
                         self._send(200, server.backend.ui_icon(), "image/png")
+                    elif path == "/studio/audio":  # a processed clip, for the play button
+                        q = parse_qs(parsed.query)
+                        data = server.backend.studio_audio(q.get("icao", [""])[0], q.get("voice", [""])[0], q.get("slot", [""])[0])
+                        if data is None:
+                            self._json(404, {"error": "not found"})
+                        else:
+                            self._send(200, data, "audio/ogg")
                     else:
                         self._json(404, {"error": "not found"})
                 except Exception:
@@ -184,8 +192,21 @@ class UIServer:
             def do_POST(self) -> None:  # noqa: N802
                 if not self._allowed():
                     return
-                path = urlparse(self.path).path
+                parsed = urlparse(self.path)
+                path = parsed.path
                 try:
+                    if path == "/studio/upload":  # raw audio bytes; details in the query string
+                        q = parse_qs(parsed.query)
+                        size = int(self.headers.get("Content-Length") or 0)
+                        if size <= 0 or size > 60 * 1024 * 1024:
+                            self.close_connection = True
+                            self._json(413, {"error": "That file is empty or too large (60 MB limit)."})
+                            return
+                        body = self.rfile.read(size)
+                        self._json(200, server.backend.studio_upload(
+                            q.get("icao", [""])[0], q.get("voice", [""])[0], q.get("slot", [""])[0],
+                            q.get("filename", ["take.wav"])[0], body))
+                        return
                     length = min(int(self.headers.get("Content-Length") or 0), 65536)
                     data = json.loads(self.rfile.read(length) or b"{}")
                     if not path.startswith("/api/") or not isinstance(data, dict):
@@ -366,6 +387,33 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .opt.sel{border-color:transparent;background:var(--grad);color:#fff}
 .check{display:flex;gap:9px;align-items:center;color:var(--muted);margin-bottom:18px;cursor:pointer;user-select:none}
 .row{display:flex;gap:10px;justify-content:flex-end}
+.tabs{display:flex;gap:6px;margin:0 0 18px}
+.tabs button{background:transparent;border-color:transparent;color:var(--muted);padding:8px 16px;border-radius:999px}
+.tabs button.on{background:var(--surface2);border-color:var(--line2);color:var(--text)}
+.sd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sd-grid label{display:flex;flex-direction:column;gap:4px;color:var(--faint);font-size:12px}
+.sd-grid label.wide{grid-column:1/-1}
+.sd-grid input{width:100%;box-sizing:border-box}
+.sd-meta{color:var(--muted);font-size:12.5px;margin-top:12px;line-height:1.5}
+.prog{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
+.prog i{display:block;height:100%;background:var(--grad)}
+details.grp{margin:14px 0}
+details.grp summary{cursor:pointer;font-weight:600;font-size:14px;padding:6px 2px;color:var(--text)}
+details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;margin-left:8px}
+.slot{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:9px 12px;margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+.slot.done{border-color:rgba(80,200,140,.35)}
+.slot .nm2{font-weight:600}
+.slot .nm2 em{font-style:normal;color:var(--err);margin-left:6px;font-size:11px}
+.slot .sc{grid-column:1;color:var(--faint);font-size:12.5px}
+.slot .st{grid-column:1;color:var(--ok,#7ee0a8);font-size:12px}
+.slot .act{grid-column:2;grid-row:1/4;display:flex;gap:6px;align-items:center}
+.slot .act button{padding:6px 11px}
+.slot .act button.rec{background:rgba(255,107,129,.16);border-color:rgba(255,107,129,.5)}
+.slot .act button.live{background:var(--err);color:#fff;border-color:transparent}
+.addline{display:flex;gap:8px;margin:8px 0}
+.addline input{flex:1}
+.chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.sdbar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg,#0d0a1f) 30%);padding:18px 0 4px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
 .toast.show{opacity:1}
@@ -380,6 +428,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <div class="switch" id="auto"><span>Auto-update</span><div class="track"></div></div>
   </header>
 
+  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button></nav>
+  <div id="view-main">
   <section class="card hero" id="hero"></section>
   <pre id="debug" class="debug" style="display:none"></pre>
 
@@ -395,6 +445,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
+  </div>
+  <div id="view-studio" style="display:none"></div>
   <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="lib" style="margin-top:14px"></div></div>
   <div class="verbar" id="ver"></div>
 </div>
@@ -542,6 +594,7 @@ function renderHero(){
       const who=[cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
       line.append(document.createTextNode(who.charAt(0).toUpperCase()+who.slice(1)));
       if(cur.credit_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
+      if(cur.donate_url){const a=el("a",null," · ♥ Support"); a.href=cur.donate_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       side.append(line);
       if(cur.description) side.append(el("span","small desc",cur.description));
     }
@@ -670,11 +723,135 @@ $("#refresh").onclick=async()=>{await api("refresh");toast("Refreshing pack list
 $("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cleared")};
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
+// ---------------------------------------------------------------- Pack Studio
+let view="main", studioSig="", recState=null, openGroups=new Set(["General announcements"]), playing=null;
+function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";
+  $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");if(v==="studio"){studioSig="";renderStudio()}}
+$("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio");
+
+function field(label,key,cur,ph,wide){const l=el("label",wide?"wide":"",label);const i=el("input");i.type="text";i.value=cur[key]||"";i.placeholder=ph||"";i.dataset.k=key;l.append(i);return l}
+function pid(c){return {icao:c.icao,voice:c.voice}}
+async function studio(name,data){const r=await api("studio_"+name,data);await refreshNow();return r}
+async function refreshNow(){try{const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}});snap=await r.json();studioSig="";renderStudio()}catch(e){}}
+
+function wavBlob(chunks,rate){
+  let n=0;chunks.forEach(c=>n+=c.length);const buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  w(0,"RIFF");v.setUint32(4,36+n*2,true);w(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,n*2,true);
+  let o=44;chunks.forEach(c=>{for(let i=0;i<c.length;i++){const x=Math.max(-1,Math.min(1,c[i]));v.setInt16(o,x<0?x*0x8000:x*0x7fff,true);o+=2}});
+  return new Blob([buf],{type:"audio/wav"});
+}
+async function startRec(slot,btn){
+  if(recState){return}
+  let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}})}
+  catch(e){toast("No microphone access - allow it in the window's permission prompt, or upload a file instead");return}
+  const ctx=new (window.AudioContext||window.webkitAudioContext)(), src=ctx.createMediaStreamSource(stream), node=ctx.createScriptProcessor(4096,1,1), chunks=[];
+  node.onaudioprocess=e=>chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(node);node.connect(ctx.destination);
+  recState={slot,btn,t0:Date.now(),stop:async()=>{
+    node.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop());const rate=ctx.sampleRate;await ctx.close();
+    const st=recState;recState=null;clearInterval(st.timer);
+    if(!chunks.length){toast("Nothing was recorded");studioSig="";renderStudio();return}
+    await upload(slot,wavBlob(chunks,rate),"take.wav");}};
+  btn.textContent="■ Stop 0:00";btn.classList.add("live");
+  recState.timer=setInterval(()=>{const s=Math.floor((Date.now()-recState.t0)/1000);btn.textContent="■ Stop "+Math.floor(s/60)+":"+String(s%60).padStart(2,"0")},250);
+}
+async function upload(slot,blob,name){
+  const c=snap.studio.current; toast("Processing...");
+  const q=new URLSearchParams({icao:c.icao,voice:c.voice,slot,filename:name,t:TOKEN});
+  try{const r=await fetch("/studio/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:blob});const j=await r.json();
+    if(j.error)toast(j.error);else toast("Done - "+j.seconds+"s, "+j.lufs_in+" → "+j.lufs_out+" LUFS");}
+  catch(e){toast("Upload failed")}
+  await refreshNow();
+}
+function play(c,slot){
+  if(playing){playing.pause();playing=null}
+  const a=new Audio("/studio/audio?"+new URLSearchParams({icao:c.icao,voice:c.voice,slot,t:TOKEN,v:Date.now()}));playing=a;a.play().catch(()=>toast("Could not play that"));
+}
+function slotRow(c,r){
+  const d=el("div","slot"+(r.done?" done":""));
+  const nm=el("div","nm2",r.label); if(r.required&&!r.done)nm.append(el("em",null,"needed")); d.append(nm);
+  if(r.script)d.append(el("div","sc","Say: "+r.script));
+  if(r.done)d.append(el("div","st",r.seconds+" s · "+r.lufs+" LUFS"));
+  const act=el("div","act");
+  const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
+  const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
+  f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,f);
+  if(r.done){const p=el("button",null,"▶");p.title="Play";p.onclick=()=>play(c,r.id);const x=el("button","danger","✕");x.title="Remove";x.onclick=()=>studio("delete",{...pid(c),slot:r.id});act.append(p,x)}
+  d.append(act);return d;
+}
+function renderStudio(){
+  if(view!=="studio"||!snap)return;
+  const root=$("#view-studio"), s=snap.studio||{projects:[],current:null}, sig=JSON.stringify(s);
+  if(sig===studioSig||recState||root.contains(document.activeElement)&&document.activeElement.tagName==="INPUT")return;
+  studioSig=sig; root.textContent="";
+  const c=s.current;
+  if(!c){
+    const card=el("section","card");card.append(el("h2",null,"Pack Studio"));
+    const intro=el("p","small","Make an airline pack: record (or upload) each announcement, and FCAC gives it the cabin-PA sound and sets it to the loudness of the original Fenix announcements, so every pack sounds consistent. Then export a zip to share.");
+    intro.style.fontSize="13.5px";intro.style.color="var(--muted)";card.append(intro);
+    const g=el("div","sd-grid");const ic=el("label",null,"Airline code (3 letters)"),i1=el("input");i1.type="text";i1.maxLength=3;i1.placeholder="BAW";i1.style.textTransform="uppercase";ic.append(i1);
+    const an=el("label",null,"Airline name"),i2=el("input");i2.type="text";i2.placeholder="British Airways";an.append(i2);
+    const vn=el("label","wide","Name of this voice"),i3=el("input");i3.type="text";i3.placeholder="Emma";vn.append(i3);g.append(ic,an,vn);card.append(g);
+    const row=el("div","row");row.style.marginTop="14px";const go=el("button","primary","Start a new pack");
+    go.onclick=async()=>{const r=await studio("create",{icao:i1.value,airline:i2.value,voice:i3.value});if(r.ok)toast("Pack started")};row.append(go);card.append(row);root.append(card);
+    if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
+      s.projects.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.margin="0 8px 8px 0";b.onclick=()=>studio("open",p);root.append(b)})}
+    return;
+  }
+  const top=el("div","section-head");const back=el("button","ghost","← All packs");back.onclick=()=>studio("close");
+  top.append(back,el("h2",null,c.airline+" · "+c.voice+" ("+c.icao+")"));root.append(top);
+  const card=el("section","card");card.append(el("h2",null,"Voice details"));
+  const g=el("div","sd-grid");
+  g.append(field("Voice artist","artist",c,"Your name"),field("Accent","accent",c,"British"),field("Short description","description",c,"Calm and collected",true),
+           field("Credit link (your site / socials)","credit_url",c,"https://..."),field("Support link (Ko-fi, Patreon...)","donate_url",c,"https://ko-fi.com/..."),field("Pack version","version",c,"1.0.0"));
+  card.append(g);
+  const save=()=>{const d={...pid(c),effect:c.effect};g.querySelectorAll("input").forEach(i=>d[i.dataset.k]=i.value);return d};
+  g.querySelectorAll("input").forEach(i=>i.onchange=async()=>{const r=await api("studio_details",save());if(r.ok)toast("Saved");studioSig=""});
+  const ef=el("div","radios");ef.style.marginTop="14px";
+  [[true,"Cabin-PA sound on","Band-limited speaker voice with light compression, like the original announcements. Recommended."],[false,"Leave my recording as it is","Only the loudness is matched."]].forEach(([v,t,sub])=>{
+    const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});
+  card.append(ef);
+  card.append(el("div","sd-meta","Every clip is set to "+c.target+" LUFS, "+(c.target_count?"the average of "+c.target_count+" original announcements from "+c.target_source+".":"a standard level, because no original announcements were found.")+" Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time."));
+  root.append(card);
+  const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
+  const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
+  const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
+  ["Airports","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["General announcements","Greetings and clock","Airports","Refuelling","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  groups.forEach(gr=>{
+    const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
+    const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done).length+"/"+gr.rows.length));d.append(sm);
+    if(gr.name==="Airports"){
+      d.append(el("div","small","Add each airport you will record. Welcome aboard = just the airport name; Landing = “Ladies and gentlemen, welcome to …”. Add a terminal variant like EGLL_T5 if you record one."));
+      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="EGLL";i.style.textTransform="uppercase";const add=el("button",null,"Add airport");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok)openGroups.add("Airports");studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      if(c.airports.length){const cr=el("div","chiprow");c.airports.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("airport",{...pid(c),code:a,remove:true});cr.append(b)});d.append(cr)}
+    }
+    if(gr.name==="Bolt-ons"){
+      d.append(el("div","small","Short announcements FCAC sometimes adds to the welcome - e.g. “Nut allergy”, “Wi-Fi unavailable”, “Delayed by air traffic control”."));
+      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Nut allergy";const add=el("button",null,"Add bolt-on");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("extra",{...pid(c),name:i.value});if(r.ok)openGroups.add("Bolt-ons");studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      if(c.extras.length){const cr=el("div","chiprow");c.extras.forEach(a=>{const b=el("button","ghost",a.replace(/_/g," ")+" ✕");b.onclick=()=>studio("extra",{...pid(c),name:a,remove:true});cr.append(b)});d.append(cr)}
+    }
+    gr.rows.forEach(r=>d.append(slotRow(c,r)));root.append(d);
+  });
+  const bar2=el("div","sdbar");
+  const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
+  const use=el("button",null,"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast("Added to your library as a voice for "+c.icao)};
+  const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
+  bar2.append(fol,use,ex);root.append(bar2);
+}
+
 async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderDebug(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderDebug(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
     if(snap.setup_needed&&!snap.welcome&&!setupShown){setupShown=true;openName()}
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt))?500:1500);

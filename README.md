@@ -272,3 +272,14 @@ automatically; run `python fcac_icon.py` to re-export `fcac.ico` and `fcac_icon.
 
 Put `config.json` and the `Airlines` folder next to `dist\fcac.exe`. To start with Windows, put a shortcut to it in
 `shell:startup`.
+
+## Pack Studio (make your own pack)
+
+Open the **Pack Studio** tab. Start a pack (airline code, airline name, a name for your voice), fill in your credit and
+support links, then work down the checklist: **Record** with your microphone or **Upload** a file for each clip.
+FCAC gives every clip the cabin-PA sound (optional) and sets it to the loudness of the original Fenix announcements, so
+all packs sound consistent. Your untouched recordings are kept, so you can switch the effect on or off at any time.
+
+- **Use in FCAC now** copies the pack into your library as a voice for that airline so you can try it in the sim.
+- **Export pack zip** writes `<ICAO>_<Voice>.zip` and a `.catalog.json` entry (open the folder that appears) ready to share.
+- Add a **Support link** (Ko-fi, Patreon...) and it is shown beside your voice name in the window.
