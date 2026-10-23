@@ -2,14 +2,14 @@ r"""
 FCAC - Fenix Cabin Announcements Configurator: system tray app for custom MSFS 2024 cabin announcements.
 
 * Reads the airline and destination of your latest SimBrief flight plan.
-* Takes the matching recording  <AIRLINE>_<ICAO>.ogg  from  Airlines\<AIRLINE>\dep | dest | fuel  and
+* Takes the matching recording  <AIRLINE>_<ICAO>.ogg  from  Airlines\<AIRLINE>\airports (older packs: dep | dest | fuel)  and
   puts it in your Fenix airline pack, replacing the generic announcement files.
 * Airlines\<AIRLINE>\main holds the airline's general PAs (SafetyBriefing, ArmDoors...); installing a pack puts them there.
 * Downloads and installs airline packs from an online catalog into the same Airlines folder, with one-click uninstall.
 
 Command line (handy for testing; with no arguments the tray app starts):
     python fcac.py --community              show the detected MSFS 2024 Community folder
-    python fcac.py --add-airline BAW AAL    create Airlines\BAW\dep|dest|fuel (and the same for AAL)
+    python fcac.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
     python fcac.py --list-packs             list packs in the catalog
     python fcac.py --install BAW            download + install a pack
     python fcac.py --uninstall BAW          remove an installed pack (restores any pack that was there before)
@@ -85,7 +85,8 @@ LEGACY_PARTS = "parts"                                # the old name of the time
 EXTRA_FOLDER = "extra"                                # Airlines\<ICAO>\extra: bolt-on announcements (nut allergy, Wi-Fi down...)
 VOICES_FOLDER = "voices"                              # Airlines\<ICAO>\voices\<Name>: another voice artist's set of recordings
 DEFAULT_VOICE = "Default"                             # the recordings directly in Airlines\<ICAO>
-ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, VOICES_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
+AIRPORTS_FOLDER = "airports"                          # Airlines\<ICAO>\airports: <AIRLINE>_<ICAO>.ogg, just the airport's name
+ZIP_FOLDERS = (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, VOICES_FOLDER, AIRPORTS_FOLDER, "dep", "dest", "fuel")    # the only top-level folders read from a pack zip
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
 DEFAULT_CONFIG = {
@@ -655,12 +656,12 @@ def check_airline_code(icao: str) -> str:
 
 
 def ensure_airline_folders(cfg: dict, icao: str) -> tuple[Path, bool]:
-    """Create Airlines\\<ICAO>\\main, parts, dep, dest, fuel if they are missing. Returns (folder, newly_created)."""
+    """Create Airlines\\<ICAO>\\main, time, extra, airports, fuel if they are missing. Returns (folder, newly_created)."""
     icao = check_airline_code(icao)
     base = airline_folder(cfg, icao)
     created = not base.is_dir()
     try:
-        for folder in (MAIN_FOLDER, PARTS_FOLDER, EXTRA_FOLDER, *(m["folder"] for m in cfg["mappings"])):
+        for folder in (MAIN_FOLDER, PARTS_FOLDER, EXTRA_FOLDER, AIRPORTS_FOLDER, "fuel"):
             (base / folder).mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise AppError(f"Could not create {base}: {exc}") from exc
@@ -906,7 +907,7 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
     """Voices of an airline: "Default" (the recordings in Airlines\\<ICAO> itself, if any) and one per folder in
     Airlines\\<ICAO>\\voices that has sound files. Each voice has its own parts / dep / dest / fuel."""
     voices: dict[str, Path] = {}
-    if any(has_ogg(lib_dir / folder) for folder in (PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, "dep", "dest", "fuel")):
+    if any(has_ogg(lib_dir / folder) for folder in (PARTS_FOLDER, LEGACY_PARTS, EXTRA_FOLDER, AIRPORTS_FOLDER, "dep", "dest", "fuel")):
         voices[DEFAULT_VOICE] = lib_dir
     root = lib_dir / VOICES_FOLDER
     if root.is_dir():
@@ -1012,13 +1013,15 @@ def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None 
     return [*pieces, *(tail or [])] if all(pieces) else None
 
 
-def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True) -> tuple[list[Path] | None, str]:
-    """Welcome to <destination> + "local time is HH:MM" + rest of the landing PA.
+def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True,
+                   lead: Path | None = None) -> tuple[list[Path] | None, str]:
+    """[Welcome to] + <destination> + "local time is HH:MM" + rest of the landing PA. `lead` is the "welcome to" clip when
+    `clip` is only the airport's name (the old dest clips already include it).
     Returns (pieces or None, a note about the time that could not be added)."""
     rest = modular_piece(lib_dir, "Landing")
     if not rest:
         return None, ""
-    pieces, note = [clip], ""
+    pieces, note = ([lead, clip] if lead else [clip]), ""
     if not want_time:
         pass  # switched off in Settings
     elif arrival:
@@ -1079,6 +1082,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                     synced += 1
 
     all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
+    all_clips[AIRPORTS_FOLDER] = find_clips(voice_dir, AIRPORTS_FOLDER, source, dest_icao)  # just the airport's name
     options = variant_options(all_clips)
     chosen = ""
     if variant is not None:
@@ -1108,7 +1112,15 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             welcome_mode = bool(modular_piece(voice_dir, "Welcome"))
             # Modular welcome: the dep clip is only the destination name, and the same clip (+ the fuel tag-on) builds
             # the refuelling variant. Modular landing: the dest clip is "welcome to <destination>".
-            clips = all_clips["dep"] if welcome_mode and folder == "fuel" else all_clips[folder]
+            names_only = all_clips[AIRPORTS_FOLDER] or all_clips["dep"]   # the airport's name: airports folder, else old dep clips
+            lead = part_file(voice_dir, "WelcomeTo")                       # "Ladies and gentlemen, welcome to"
+            landing_from_name = folder == "dest" and bool(all_clips[AIRPORTS_FOLDER]) and bool(lead)
+            if welcome_mode and folder in ("dep", "fuel"):
+                clips = names_only
+            elif landing_from_name:
+                clips = all_clips[AIRPORTS_FOLDER]
+            else:
+                clips = all_clips[folder]
             clip = clips.get(chosen) or clips.get("")  # the chosen variant, else the plain file, else generic
             joined = (folder in ("dep", "fuel") and welcome_mode) or (folder == "dest" and modular_piece(voice_dir, "Landing"))
             extra = pick_extra(cfg, voice_dir, f"{airline}_{dest_icao}") if joined and folder != "dest" else None
@@ -1120,7 +1132,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                 pieces = None
                 if joined and clip:
                     if folder == "dest":
-                        pieces, note = landing_pieces(voice_dir, clip, arrival, bool(cfg.get("announce_local_time", True)))
+                        pieces, note = landing_pieces(voice_dir, clip, arrival, bool(cfg.get("announce_local_time", True)),
+                                                      lead if landing_from_name else None)
                         if note and note not in notes:
                             notes.append(note)
                     else:
@@ -2228,7 +2241,7 @@ class TrayApp(UIMixin):
 def main() -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--community", action="store_true", help="show the detected Community folder")
-    parser.add_argument("--add-airline", nargs="+", metavar="ICAO", help="create Airlines\\<ICAO>\\dep|dest|fuel folders")
+    parser.add_argument("--add-airline", nargs="+", metavar="ICAO", help="create Airlines\\<ICAO>\\main|time|extra|airports|fuel folders")
     parser.add_argument("--list-packs", action="store_true", help="list packs in the catalog")
     parser.add_argument("--install", metavar="ICAO", help="download and install an airline pack")
     parser.add_argument("--uninstall", metavar="ICAO", help="uninstall an airline pack")

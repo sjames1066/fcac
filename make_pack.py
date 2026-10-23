@@ -14,9 +14,9 @@ The zip contains:
     time/   greetings and local-time clips FCAC joins into the welcome and landing PAs (Welcome_Morning.ogg, Hour_04.ogg ...)
     extra/  bolt-on announcements, one of which is sometimes added to the welcome PA
     voices/ optional extra voice artists, each laid out like the airline folder
-    dep/    <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome
-    dest/   <ICAO>_<destination ICAO>.ogg   -> replaces AfterLanding
-    fuel/   <ICAO>_<destination ICAO>.ogg   -> replaces BoardingWelcome[Refueling]
+    airports/ <ICAO>_<destination ICAO>.ogg  just the airport's name; FCAC mixes it into the welcome aboard and landing PAs
+    dep/, dest/  older packs: a finished welcome / "welcome to <airport>" clip per airport (still read)
+    fuel/   the refuelling tag-on (and, in older packs, <ICAO>_<destination ICAO>.ogg)
 
 --url is where the zip will be downloadable. Leave it out to store just "<ICAO>.zip", which works when the zip
 sits next to catalog.json (and for testing with a local catalog).
@@ -88,6 +88,7 @@ def main() -> int:
     parser.add_argument("--time", dest="time_dir", type=Path, help="folder of greetings and local-time clips (Welcome_Morning, Hour_01, Min_35 ...)")
     parser.add_argument("--extra", type=Path, help="folder of bolt-on announcements (nut allergy, Wi-Fi unavailable ...)")
     parser.add_argument("--voices", type=Path, help="folder with one sub-folder per extra voice artist (each like the airline folder)")
+    parser.add_argument("--airports", type=Path, help="folder of <ICAO>_<dest>.ogg: just the airport's name")
     parser.add_argument("--dep", type=Path, help="folder of <ICAO>_<dest>.ogg for the welcome aboard")
     parser.add_argument("--dest", type=Path, help="folder of <ICAO>_<dest>.ogg for the arrival welcome")
     parser.add_argument("--fuel", type=Path, help="folder of <ICAO>_<dest>.ogg for the refuelling welcome")
@@ -105,14 +106,14 @@ def main() -> int:
         return 1
     if args.airline_dir:  # fill anything not given explicitly from the Airlines\<ICAO> folder
         for label, attr in (("main", "main"), ("time", "time_dir"), ("parts", "time_dir"), ("extra", "extra"),
-                            ("voices", "voices"), ("dep", "dep"), ("dest", "dest"), ("fuel", "fuel")):
+                            ("voices", "voices"), ("airports", "airports"), ("dep", "dep"), ("dest", "dest"), ("fuel", "fuel")):
             candidate = args.airline_dir / label
             if getattr(args, attr) is None and candidate.is_dir():
                 setattr(args, attr, candidate)
     if args.main is None:
         print("ERROR: no main folder. Give --main, or put the general PAs in <airline-dir>\\main", file=sys.stderr)
         return 1
-    for label, folder in (("main", args.main), ("time", args.time_dir), ("extra", args.extra), ("voices", args.voices), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
+    for label, folder in (("main", args.main), ("time", args.time_dir), ("extra", args.extra), ("voices", args.voices), ("airports", args.airports), ("dep", args.dep), ("dest", args.dest), ("fuel", args.fuel)):
         if folder is not None and not folder.is_dir():
             print(f"ERROR: --{label} folder not found: {folder}", file=sys.stderr)
             return 1
@@ -133,7 +134,7 @@ def main() -> int:
             archive.write(args.airline_dir / "voice.json", "voice.json")
         if args.voices:
             print(f"voices: {add_folder(archive, args.voices, 'voices', None)} files")
-        for label in ("dep", "dest", "fuel"):
+        for label in ("airports", "dep", "dest", "fuel"):
             folder = getattr(args, label)
             if folder:
                 # fuel holds tag-on clips with any name; dep and dest hold <ICAO>_<airport>.ogg clips

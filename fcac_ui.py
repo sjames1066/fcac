@@ -556,7 +556,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="row" style="margin-top:16px;justify-content:space-between"><button id="mic-test">Test: record 3 s and play back</button><button class="primary" id="mic-done">Done</button></div>
 </div></div>
 <div class="modal" id="m-up"><div class="dialog" style="width:560px">
-  <h3>Upgrade to the new Fenix names</h3><p>These clips use Fenix's old names. Renaming them lets them use the new announcement types, tags and modes. Only your Studio copy changes now. When you press "Save changes to my library", the old-named files there are replaced by these.</p>
+  <h3>Upgrade to the new names and folders</h3><p>These clips use old names or folders. Renaming them lets them use the new announcement types, tags and modes. Only your Studio copy changes now. When you press "Save changes to my library", the old-named files there are replaced by these.</p>
   <div id="up-list" style="max-height:48vh;overflow:auto;margin-bottom:14px"></div>
   <div class="small" style="margin-bottom:14px">The takeoff and landing versions share one new name and are told apart by flight-phase tags (PreFlight = before takeoff, Descent/Approach = before landing). That is our reading of Fenix's guide - test it in the sim.</div>
   <div class="row"><button id="up-cancel">Not now</button><button class="primary" id="up-ok">Rename them</button></div>
@@ -965,7 +965,7 @@ function renderStudio(){
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Airports"){
-      d.append(el("div","small","Add each airport you will record. Welcome aboard = just the airport name; Landing = “Ladies and gentlemen, welcome to …”. Add a terminal variant like EGLL_T5 if you record one."));
+      d.append(el("div","small","Add each airport and record just its name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="EGLL";i.style.textTransform="uppercase";const add=el("button",null,"Add airport");
       add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok)openGroups.add("Airports");studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);

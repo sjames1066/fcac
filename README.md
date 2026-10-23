@@ -10,7 +10,7 @@ click**, and removed the same way.
 ## The Airlines folder
 
 Your recordings live in an `Airlines` folder next to the app (for example `C:\FCAC\Airlines`), one folder per airline
-ICAO code, each with `main`, `dep`, `dest`, `time`, `fuel` and `extra` inside (see Modular announcements below):
+ICAO code, each with `main`, `airports`, `time`, `fuel` and `extra` inside (see Modular announcements below):
 
 ```
 C:\FCAC\
@@ -19,13 +19,12 @@ C:\FCAC\
   Airlines\
     BAW\
       main\   SafetyBriefing.ogg  ArmDoors.ogg  Modular_Welcome.ogg ...   <- unmodified PAs
-      dep\    BAW_BIKF.ogg  BAW_EGLL.ogg  ...     <- welcome aboard (airport name)
-      dest\   BAW_BIKF.ogg  ...                    <- landing PA (welcome to your destination)
+      airports\ BAW_BIKF.ogg  BAW_EGLL.ogg  ...   <- just the airport's name, used in both PAs
       time\   Welcome_Morning.ogg  Hour_04.ogg  Min_35.ogg ...   <- greetings and local time
       fuel\   Fuel_Tag.ogg                         <- said while refuelling
       extra\  Nut_Allergy.ogg  WiFi_Unavailable.ogg ...   <- random bolt-ons
     AAL\
-      main\  dep\  dest\  time\  fuel\  extra\
+      main\  airports\  time\  fuel\  extra\
 ```
 
 Name each recording `<AIRLINE>_<destination ICAO>.ogg`. The destination is the ICAO code of where the flight is going.
@@ -65,13 +64,12 @@ joins the pieces into the full announcement and puts that in the Fenix pack. The
 | Folder | What goes in it |
 |--------|-----------------|
 | `main` | the airline's unmodified PAs, plus `Modular_Welcome.ogg` and `Modular_Landing.ogg` (the "rest of the PA", named differently from the generic BoardingWelcome / AfterLanding so you can tell them apart). The modular files are never copied into the Fenix pack. |
-| `dep`  | `<AIRLINE>_<ICAO>.ogg`, just the airport name for the welcome aboard ("London Heathrow") |
-| `dest` | `<AIRLINE>_<ICAO>.ogg`, the opening of the landing PA ("Ladies and gentlemen, welcome to London Heathrow") |
-| `time` | the greetings and the local-time clips (below) |
+| `airports` | `<AIRLINE>_<ICAO>.ogg`, just the airport's name ("London Heathrow"). FCAC mixes this one clip into both the welcome aboard and the landing PA. |
+| `time` | the greetings, the "welcome to" lead-in (`WelcomeTo.ogg`: "Ladies and gentlemen, welcome to") and the local-time clips (below) |
 | `fuel` | a tag-on said while refuelling ("We are currently refuelling...") |
 | `extra` | bolt-ons: "nut allergy on board", "Wi-Fi is unavailable"... |
 
-**Welcome aboard** = greeting (`time\Welcome_Morning` / `Welcome_Afternoon` / `Welcome_Evening`) + `dep` airport +
+**Welcome aboard** = greeting (`time\Welcome_Morning` / `Welcome_Afternoon` / `Welcome_Evening`) + `airports` clip +
 `Modular_Welcome`. FCAC makes the Morning, Afternoon and Evening files, so Fenix still chooses by time of day.
 
 **Refuelling.** Fenix plays its `BoardingWelcome[Refueling]` file while the aircraft is being refuelled, so FCAC builds
@@ -81,7 +79,7 @@ that file as the same welcome plus the `fuel` tag-on. No sim detection is needed
 one random file from `extra` added to the end of the welcome PA. It is chosen once per flight, so rebuilding the PA
 (a voice change) keeps the same one.
 
-**Landing** = `dest` airport + `time\LocalTime` + `Hour_NN` + `Min_NN` + `Modular_Landing`:
+**Landing** = `time\WelcomeTo` + `airports` clip + `time\LocalTime` + `Hour_NN` + `Min_NN` + `Modular_Landing`:
 
 | Piece (in `time`) | Example |
 |-------------------|---------|
@@ -90,7 +88,7 @@ one random file from `extra` added to the end of the welcome PA. It is chosen on
 | `Min_00.ogg`, `Min_05.ogg` ... `Min_55.ogg` | "thirty-five" (`Min_00`, e.g. "o'clock", is optional) |
 
 The time is rounded to the nearest 5 minutes. If a time piece is missing, the time is left out and the rest still plays.
-Without `Modular_Welcome` / `Modular_Landing`, the `dep` and `dest` recordings are used whole, exactly as before. (The
+Older packs with `dep` (airport name) and `dest` ("welcome to <airport>") folders still work: `dep` is used when there is no `airports` clip, and `dest` when `WelcomeTo.ogg` is missing. Without `Modular_Welcome` / `Modular_Landing`, the `dep` and `dest` recordings are used whole, exactly as before. (The
 old `parts` folder name, `Welcome_Rest.ogg` and `Landing_Rest.ogg` still work.)
 
 **Live local time.** FCAC watches MSFS (SimConnect). When you have landed and slowed to 60 knots ground speed
@@ -132,7 +130,7 @@ Enjoying FCAC? [Buy me a Ko-fi](https://ko-fi.com/sjames1066) - there's a button
 2. Edit `config.json`: set `simbrief_username` (the name, not the numeric ID). Set `catalog_url` too if you want
    downloadable packs (see "Publishing packs").
 3. Run `pythonw fcac.py` (no console window). The icon appears in the system tray.
-4. Put your recordings in `Airlines\<ICAO>\dep|dest|fuel`, or right-click the icon -> **Install airline pack**.
+4. Put your recordings in `Airlines\<ICAO>\airports` (or the older `dep|dest|fuel`), or right-click the icon -> **Install airline pack**.
 
 FCAC updates on every new SimBrief plan. Generate your plan and wait for the tray notification **before boarding
 starts**; the sim reads the files when each announcement plays. Added a new recording for the flight you already
@@ -197,7 +195,7 @@ If nothing is found, the tray says so and you can set `community_dir` yourself.
 
 ## Downloadable airline packs
 
-Installing a pack from the catalog adds its files to `Airlines\<ICAO>` (`main`, `dep`, `dest`, `fuel`) and its
+Installing a pack from the catalog adds its files to `Airlines\<ICAO>` (`main`, `airports`, `time`, `fuel`...) and its
 general announcements to the Fenix folder. **Files you already have are never overwritten**: if you and the pack both have `BAW_BIKF.ogg`, yours is used.
 Uninstalling removes only the files the pack added.
 
@@ -212,7 +210,7 @@ python make_pack.py --icao BAW --name "British Airways" --version 1.0.0 ^
     --url https://github.com/YOU/REPO/releases/download/baw-1.0.0/BAW.zip
 ```
 
-`--airline-dir` supplies `main`, `dep`, `dest` and `fuel` from your Airlines folder (or give `--main` yourself). This writes `dist\BAW.zip` and adds the pack (with a SHA-256 checksum) to `dist\catalog.json`.
+`--airline-dir` supplies `main`, `airports`, `time`, `fuel` (and the older `dep` / `dest`) from your Airlines folder (or give `--main` yourself). This writes `dist\BAW.zip` and adds the pack (with a SHA-256 checksum) to `dist\catalog.json`.
 Run it again for each airline; existing entries are replaced. The zip contains:
 
 ```
@@ -242,7 +240,7 @@ Only recordings you have the right to distribute should go in a public pack.
 ## Safety
 
 - Downloads are checked against the catalog's SHA-256 before anything is installed.
-- Only the `main`, `dep`, `dest` and `fuel` folders are read from a zip, and any entry that tries to escape the install folder rejects the whole pack.
+- Only the `main`, `time`, `extra`, `voices`, `airports`, `dep`, `dest` and `fuel` folders are read from a zip, and any entry that tries to escape the install folder rejects the whole pack.
 - A pack already in the Fenix folder is moved to `%LOCALAPPDATA%\FCAC\backups` and put back when you uninstall.
 - Airline and airport codes are checked before they are used in a file name.
 - If a file is locked by the sim, the app retries for about 6 seconds and then reports it in the tray.
@@ -251,7 +249,7 @@ Only recordings you have the right to distribute should go in a public pack.
 
 ```
 python fcac.py --community              show the detected Community folder
-python fcac.py --add-airline BAW AAL    create Airlines\BAW\main|dep|dest|fuel (and AAL)
+python fcac.py --add-airline BAW AAL    create Airlines\BAW\main|time|extra|airports|fuel (and AAL)
 python fcac.py --list-packs
 python fcac.py --install BAW
 python fcac.py --uninstall BAW
@@ -311,3 +309,8 @@ Click a clip's script line in the Studio to edit it in place: changes are saved 
 If a Studio recording is silent, FCAC does not keep it and shows a reminder with a button to open **Audio settings**. A very quiet recording is saved but gets the same reminder. A silent uploaded file is refused with the same hint.
 
 Studio rows are in alphabetical order (general announcements, boarding music, bolt-ons; airports by code) - the clock keeps its clock order. **Decompression** has the Prerecorded / Manual drop-down too (Prerecorded by default).
+
+**One airports folder.** The Studio now records just the airport's name once (`airports\<AIRLINE>_<ICAO>.ogg`) and FCAC mixes
+it into both PAs, with a `time\WelcomeTo` clip ("Ladies and gentlemen, welcome to") leading the landing PA. Opening an
+older pack in the Studio offers to move its `dep` clips into `airports`; its `dest` clips (which already contain
+"welcome to") are left alone and still work until you record `WelcomeTo`.

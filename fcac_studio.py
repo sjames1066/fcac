@@ -57,6 +57,7 @@ GREETINGS = [("Welcome_Morning", "Good morning", "Good morning, ladies and gentl
              ("Welcome_Afternoon", "Good afternoon", "Good afternoon, ladies and gentlemen"),
              ("Welcome_Evening", "Good evening", "Good evening, ladies and gentlemen"),
              ("Welcome_Night", "Good evening (night, optional)", "Used for boardings between midnight and 6 am; without it 'Good evening' is used."),
+             ("WelcomeTo", "Landing lead-in", "Ladies and gentlemen, welcome to"),
              ("LocalTime", "Local time lead-in", "...where the local time is")]
 HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"]
 MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 25: "twenty-five", 30: "thirty",
@@ -197,10 +198,8 @@ def slot_list(project: dict) -> list[dict]:
     add("Greetings and clock", "time", "AM", "AM (optional)", "A.M. - said after the minutes, e.g. 'four thirty-five A.M.'")
     add("Greetings and clock", "time", "PM", "PM (optional)", "P.M. - said after the minutes, e.g. 'four thirty-five P.M.'")
     for code in project.get("airports", []):
-        add("Airports", "dep", f"{icao}_{code}", f"Welcome aboard - {code}",
-            "Just the airport name, e.g. 'London Heathrow'")
-        add("Airports", "dest", f"{icao}_{code}", f"Landing - {code}",
-            "'Ladies and gentlemen, welcome to ' + the airport name")
+        add("Airports", "airports", f"{icao}_{code}", f"Airport name - {code}",
+            "Just the airport's name, e.g. 'London Heathrow'. FCAC puts it into both the welcome aboard and the landing PA.", required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     for name in project.get("music", []):
@@ -304,7 +303,7 @@ def status(root: Path, project: dict) -> list[dict]:
         if r["group"] in alphabetical:
             return r["label"].lower()
         if r["group"] == "Airports":   # by airport, welcome aboard before landing
-            return r["stem"].split("_", 1)[-1] + ("0" if r["folder"] == "dep" else "1")
+            return r["stem"].split("_", 1)[-1]
         return 0
     rows.sort(key=lambda r: (first[r["group"]], order(r)))
     return rows
@@ -456,19 +455,41 @@ def processed_file(root: Path, project: dict, slot_id: str) -> Path | None:
     return path if path.is_file() else None
 
 
+def legacy_moves(pack: Path) -> list[tuple[str, str]]:
+    """Old dep clips (just the airport's name, when the pack has the modular welcome) -> the airports folder."""
+    dep, airports = pack / "dep", pack / "airports"
+    modular = [pack / "main" / "Modular_Welcome.ogg", pack / "time" / "Welcome_Rest.ogg", pack / "parts" / "Welcome_Rest.ogg"]
+    if not dep.is_dir() or not any(p.is_file() for p in modular):
+        return []
+    have = {p.name.lower() for p in airports.iterdir()} if airports.is_dir() else set()
+    return [(f"dep/{p.name}", f"airports/{p.name}") for p in sorted(dep.iterdir())
+            if p.is_file() and p.suffix.lower() == ".ogg" and p.name.lower() not in have]
+
+
+def upgrade_plan(root: Path, project: dict) -> list[tuple[str, str]]:
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack"
+    return [(f"main/{a}", f"main/{b}") for a, b in legacy_renames(pack / "main")] + legacy_moves(pack)
+
+
 def upgrade_preview(root: Path, project: dict) -> list[dict]:
-    pack = project_dir(root, project["icao"], project["voice"]) / "pack" / "main"
-    return [{"old": a, "new": b} for a, b in legacy_renames(pack)]
+    return [{"old": a, "new": b} for a, b in upgrade_plan(root, project)]
 
 
 def upgrade_names(root: Path, project: dict) -> int:
-    """Rename the legacy-named clips in the project's copy (never the library) to the new Fenix names."""
-    pack = project_dir(root, project["icao"], project["voice"]) / "pack" / "main"
+    """Rename / move the legacy clips in the project's copy (never the library) to the new Fenix names and folders."""
+    pack = project_dir(root, project["icao"], project["voice"]) / "pack"
     done = 0
-    for old, new in legacy_renames(pack):
+    for old, new in upgrade_plan(root, project):
+        (pack / new).parent.mkdir(parents=True, exist_ok=True)
         (pack / old).rename(pack / new)
         project.setdefault("replaced", []).append(old)
         done += 1
+    airports = pack / "airports"
+    for path in sorted(airports.iterdir()) if airports.is_dir() else []:  # moved clips become airports in the checklist
+        match = re.match(rf"^{re.escape(project['icao'])}_([A-Z0-9]{{4}}(?:_[A-Z0-9]{{1,8}})?)$", path.stem, re.I)
+        if match and match[1].upper() not in project["airports"]:
+            project["airports"].append(match[1].upper())
+    project["airports"].sort()
     save(root, project)
     return done
 
@@ -491,8 +512,8 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
     todo = missing(root, project)
     if todo:
         raise StudioError("Still to record: " + ", ".join(todo[:6]) + (f" and {len(todo) - 6} more" if len(todo) > 6 else ""))
-    if not any(s["folder"] in ("dep", "dest") and s["done"] for s in status(root, project)):
-        raise StudioError("Add at least one airport and record its welcome and landing clips.")
+    if not any(s["folder"] == "airports" and s["done"] for s in status(root, project)):
+        raise StudioError("Add at least one airport and record its name.")
     folder = project_dir(root, project["icao"], project["voice"]) / "pack"
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / f"{project['icao']}_{slug(project['voice'])}.zip"
@@ -509,7 +530,7 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
     return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"]}
 
 
-IMPORT_FOLDERS = ("main", "time", "parts", "extra", "dep", "dest", "fuel")
+IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "dep", "dest", "fuel")
 
 
 def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str, progress=None) -> dict:
@@ -544,7 +565,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     for path, folder in files:  # work out the airports, bolt-ons and music tracks it contains
         stem = path.stem
         match = re.match(rf"^{re.escape(icao)}_([A-Z0-9]{{4}}(?:_[A-Z0-9]{{1,8}})?)$", stem, re.I)
-        if folder in ("dep", "dest") and match and match[1].upper() not in project["airports"]:
+        if folder == "airports" and match and match[1].upper() not in project["airports"]:
             project["airports"].append(match[1].upper())
         elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
             project["extras"].append(stem)
@@ -579,7 +600,7 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     shutil.copytree(src, dest, dirs_exist_ok=True)
     if origin and dest == origin:  # the old-named copies of upgraded clips are replaced, not left beside the new ones
         for old in project.get("replaced", []):
-            (dest / "main" / old).unlink(missing_ok=True)
+            (dest / (old if "/" in old else f"main/{old}")).unlink(missing_ok=True)
         project["replaced"] = []
         save(root, project)
     music = sorted((src / "main").glob("BoardingMusic*.ogg"))
