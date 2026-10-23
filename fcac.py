@@ -1458,6 +1458,7 @@ class UIMixin:
             "company": company,
             "debug": DEBUG_BUFFER.lines[-14:] if DEBUG else None,
             "voices": voices,
+            "hide_reminder": bool(cfg.get("hide_reminder")),
             "welcome": self._welcome_info(cfg, state),
             "welcome_info": self._welcome_info(cfg, {}),
             "studio": self.studio_snapshot(cfg),
@@ -1638,6 +1639,8 @@ class UIMixin:
             except (AppError, OSError) as exc:
                 return {"error": str(exc)}
             self.set_status("Settings saved")
+        elif name == "hide_reminder":
+            set_config_value("hide_reminder", bool(data.get("hide", True)))
         elif name == "welcomed":
             state = load_state()
             state["welcomed"] = True

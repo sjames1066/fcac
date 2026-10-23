@@ -408,7 +408,11 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .prog{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
 .prog i{display:block;height:100%;background:var(--grad)}
 .keepopen{margin:14px 0 0;padding:12px 14px;border:1px solid rgba(240,200,60,.55);background:rgba(240,200,60,.09);border-radius:12px}
-.keepopen.slim{margin:12px 0 22px;padding:9px 14px}
+.keepopen.slim{margin:12px 0 22px;padding:9px 38px 9px 14px;position:relative}
+.keepx{position:absolute;top:6px;right:8px;width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--faint);font-size:20px;line-height:1;cursor:pointer;border-radius:6px}
+.keepx:hover{color:var(--text);background:rgba(255,255,255,.08)}
+.keepno{display:block;margin-top:6px;font-size:12px;color:var(--faint);cursor:pointer}
+.keepno input{margin-right:6px;vertical-align:-2px}
 .keepopen.slim b{display:inline;margin:0 8px 0 0}
 .keepopen b{display:block;color:#f0c83c;margin-bottom:4px}
 .keepopen span{color:var(--muted);font-size:13px;line-height:1.45}
@@ -470,7 +474,8 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button></nav>
   <div id="view-main">
   <section class="card hero" id="hero"></section>
-  <div class="keepopen slim"><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span></div>
+  <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
+    <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
   <pre id="debug" class="debug" style="display:none"></pre>
 
   <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
@@ -629,7 +634,9 @@ function renderDebug(){
   const text=snap.debug.join("\n"); if(d.dataset.t===text) return; d.dataset.t=text;
   d.style.display="block"; d.textContent=text; d.scrollTop=d.scrollHeight;
 }
-let heroSig="";
+let heroSig="", keepClosed=false;
+function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
+$("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
   const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.updated,snap.busy,snap.logo_v]);
   if(sig===heroSig) return; heroSig=sig;
@@ -1076,7 +1083,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderDebug(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKeep(); renderDebug(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }
