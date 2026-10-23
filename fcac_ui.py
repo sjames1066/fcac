@@ -410,6 +410,10 @@ details.grp summary span{color:var(--faint);font-weight:500;font-size:12.5px;mar
 .slot .act button{padding:6px 11px}
 .slot .act button.sq{width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
 .slot .sc.custom{white-space:pre-wrap}
+.slot .sc.editable{cursor:text;border-radius:6px}
+.slot .sc.editable:hover{background:rgba(255,255,255,.05)}
+.slot.reading .sc.editable{cursor:default}
+textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;font:500 13px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--magenta);border-radius:8px;padding:7px 9px;outline:none}
 .slot .act button.rec{background:rgba(255,107,129,.16);border-color:rgba(255,107,129,.5)}
 .slot .act button.live{background:var(--err);color:#fff;border-color:transparent}
 .addline{display:flex;gap:8px;margin:8px 0}
@@ -865,7 +869,20 @@ function slotRow(c,r){
   if(r.modes){const ms=el("select","voice");ms.style.cssText="margin-left:10px;padding:3px 8px;font-size:12px";ms.title="How Fenix plays it: Prerecorded = chosen in the cabin crew panel; Manual = the purser announces it (adds [Manual] to the file name)";
     r.modes.forEach(m=>{const o=el("option",null,m);o.value=m;ms.append(o)});ms.value=r.mode;ms.onchange=()=>studio("mode",{...pid(c),slot:r.id,mode:ms.value});nm.append(ms)}
   d.append(nm);
-  if(r.script)d.append(el("div","sc"+(r.custom?" custom":""),r.custom||r.music?r.script:"Say: "+r.script));
+  const scl=el("div","sc editable"+(r.custom?" custom":""),r.script?(r.custom||r.music?r.script:"Say: "+r.script):"Click to add a script");
+  scl.title="Click to edit this script. Enter saves it, Shift+Enter adds a line, Esc undoes.";
+  scl.onclick=()=>{
+    if(scl.querySelector("textarea")||recState)return;
+    const ta=el("textarea","sc-edit");ta.value=r.script||"";ta.rows=1;scl.textContent="";scl.classList.remove("custom");scl.append(ta);
+    const fit=()=>{ta.style.height="auto";ta.style.height=ta.scrollHeight+"px"};fit();ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);
+    let timer=null,finished=false;const save=text=>api("studio_script",{...pid(c),slot:r.id,text});
+    ta.oninput=()=>{fit();clearTimeout(timer);timer=setTimeout(()=>save(ta.value),250)};   // saved as you type
+    const finish=async(undo)=>{if(finished)return;finished=true;clearTimeout(timer);
+      const text=undo?(r.custom?r.script:""):ta.value;ta.blur();await save(text);await refreshNow()};
+    ta.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();finish(false)}else if(e.key==="Escape"){e.preventDefault();finish(true)}};
+    ta.onblur=()=>finish(false);
+  };
+  d.append(scl);
   if(r.variants&&r.variants.length)d.append(el("div","st","Also has: "+r.variants.join(", ")));
   if(r.done)d.append(el("div","st",r.imported?"From your library - unchanged":r.seconds+" s · "+r.lufs+" LUFS"+(r.music?" · unchanged":"")));
   const act=el("div","act");
@@ -885,7 +902,7 @@ function slotRow(c,r){
 function renderStudio(){
   if(view!=="studio"||!snap)return;
   const root=$("#view-studio"), s=snap.studio||{projects:[],current:null}, sig=JSON.stringify(s);
-  if(sig===studioSig||recState||root.contains(document.activeElement)&&document.activeElement.tagName==="INPUT")return;
+  if(sig===studioSig||recState||root.contains(document.activeElement)&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName))return;
   studioSig=sig; root.textContent="";
   const c=s.current;
   if(!c){

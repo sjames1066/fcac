@@ -305,3 +305,5 @@ In the Studio, **SafetyBriefing**, **AfterTakeoff** and **CabinService** have a 
 CrewTakeSeats and CabinSecured have separate **takeoff** (`[PreFlight]`) and **landing** (`[Descent][Approach]`) clips in the Studio checklist, so each gets its own recording and file.
 
 Every Studio row has a small script button (hover: *Upload Script*). It takes a text file whose contents become that clip's script, shown under the clip and in large type while you record. A ✕ beside it removes that script.
+
+Click a clip's script line in the Studio to edit it in place: changes are saved as you type, **Enter** finishes (Shift+Enter adds a line), **Esc** undoes.
