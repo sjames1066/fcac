@@ -336,6 +336,8 @@ header img{width:46px;height:46px;border-radius:12px;box-shadow:0 6px 20px rgba(
 header h1{font-size:21px;font-weight:700;margin:0;letter-spacing:-.02em}
 header p{margin:0;color:var(--muted);font-size:12.5px}
 .spacer{flex:1}
+.updbar{display:flex;align-items:center;gap:14px;padding:12px 16px;margin-bottom:14px;border-color:rgba(255,146,24,.5);background:rgba(255,146,24,.08)}
+.updbar>div{flex:1;min-width:0}.updbar b{display:block;font-size:13.5px}.updbar span{color:var(--muted);font-size:12.5px}
 .cog{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:transparent;border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.15s}
 .cog:hover{color:var(--text);background:rgba(255,255,255,.07);border-color:var(--line2)}
 .cog:hover svg{transform:rotate(45deg)}
@@ -514,6 +516,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button></nav>
   <div id="view-main">
+  <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
   <section class="card hero" id="hero"></section>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
@@ -690,6 +693,9 @@ function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show")
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
 let heroSig="", keepClosed=false;
+function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.style.display="none";return}
+  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent=(a.notes?a.notes+" - ":"")+"You have "+(snap.version||"an older version")+".";}
+$("#upd-go").onclick=()=>api("open",{what:"update"});
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
@@ -1180,7 +1186,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
-    renderHero(); renderKeep(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }

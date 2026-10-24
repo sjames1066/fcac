@@ -541,6 +541,20 @@ def _local_path(url: str) -> Path:
     return Path(url2pathname(urlparse(url).path)) if url.lower().startswith("file:") else Path(url)
 
 
+APP_LATEST: dict = {}   # filled in by load_catalog from the catalog's "app" entry
+
+
+def _version_tuple(text: str) -> tuple:
+    return tuple(int(n) for n in re.findall(r"\d+", text)[:4]) or (0,)
+
+
+def app_update() -> dict | None:
+    """The newer FCAC the catalog announces, if there is one."""
+    if APP_LATEST and _version_tuple(APP_LATEST["version"]) > _version_tuple(VERSION):
+        return dict(APP_LATEST)
+    return None
+
+
 def load_catalog(cfg: dict) -> list[dict]:
     """Catalog JSON: {"packs": [{"icao","name","version","url","sha256"?,"size"?}]}. URL may be relative."""
     url = str(cfg.get("catalog_url", "")).strip()
@@ -556,6 +570,12 @@ def load_catalog(cfg: dict) -> list[dict]:
     except (requests.RequestException, OSError, ValueError) as exc:
         raise AppError(f"Could not load the pack catalog: {exc}") from exc
 
+    app = data.get("app")   # {"version": "1.0.2", "url": "https://...", "notes": "..."}: the newest FCAC
+    APP_LATEST.clear()
+    if isinstance(app, dict) and str(app.get("version", "")).strip():
+        link = str(app.get("url", "")).strip()
+        APP_LATEST.update({"version": str(app["version"]).strip()[:20], "url": link if _is_http(link) else "",
+                           "notes": str(app.get("notes", "")).strip()[:200]})
     packs = []
     for entry in data.get("packs", []):
         icao = str(entry.get("icao", "")).strip().upper()
@@ -1696,6 +1716,7 @@ class UIMixin:
             "busy": self.lock.locked() or bool(self.tasks),
             "packs": packs,
             "catalog_error": self.catalog_error,
+            "app_update": app_update(),
             "logo_v": self.logo_version,
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
@@ -2190,6 +2211,13 @@ class UIMixin:
             elif what == "aliases":
                 load_aliases(cfg)  # creates the file if it isn't there yet
                 open_path(ALIASES_PATH)
+                return
+            elif what == "update":
+                import webbrowser
+
+                latest = app_update()
+                if latest and latest.get("url"):
+                    webbrowser.open(latest["url"])
                 return
             elif what == "kofi":
                 import webbrowser
