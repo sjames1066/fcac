@@ -9,11 +9,13 @@ echo.
 echo Building FCAC (a folder of files, not one self-extracting file: antivirus programs trust that more) ...
 "%PYEXE%" -m PyInstaller --noconfirm --clean --onedir --noconsole --name FCAC --icon fcac.ico --hidden-import pystray._win32 --add-data "airport_names.json;." --collect-all SimConnect fcac.py
 if errorlevel 1 goto failed
-for /f "delims=" %%V in ('"%PYEXE%" -c "import re;print(re.search(r'VERSION = .(.+?).$',open('fcac.py').read(),re.M).group(1))"') do set "FCACVER=%%V"
+for /f "tokens=3 delims= " %%V in ('findstr /b /c:"VERSION = " fcac.py') do set "FCACVER=%%~V"
+echo FCAC version: %FCACVER%
 set "ISCC="
-if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
-if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+for %%P in ("%LOCALAPPDATA%\Programs\Inno Setup 6" "%ProgramFiles(x86)%\Inno Setup 6" "%ProgramFiles%\Inno Setup 6" "%ProgramFiles(x86)%\Inno Setup 7" "%ProgramFiles%\Inno Setup 7") do if not defined ISCC if exist "%%~P\ISCC.exe" set "ISCC=%%~P\ISCC.exe"
+if not defined ISCC for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do if not defined ISCC set "ISCC=%%I"
+if not defined ISCC for %%K in ("HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1" "HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1" "HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1") do if not defined ISCC for /f "tokens=2,*" %%A in ('reg query %%K /v InstallLocation 2^>nul ^| findstr InstallLocation') do if exist "%%B\ISCC.exe" set "ISCC=%%B\ISCC.exe"
+if defined ISCC echo Inno Setup compiler: %ISCC%
 if not defined ISCC goto noinno
 echo.
 echo Building the installer ...
