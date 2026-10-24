@@ -193,11 +193,11 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 def launch_command() -> tuple[str, str]:
     """(program, arguments) that start this app: the .exe itself, or pythonw + fcac.py."""
     if getattr(sys, "frozen", False):
-        return sys.executable, ""
+        return sys.executable, "--background"
     exe = Path(sys.executable)
     windowless = exe.with_name("pythonw.exe")
     program = windowless if exe.name.lower() == "python.exe" and windowless.exists() else exe
-    return str(program), f'"{Path(__file__).resolve()}"'
+    return str(program), f'"{Path(__file__).resolve()}" --background'
 
 
 def msfs_config_dirs() -> list[Path]:
@@ -2234,9 +2234,10 @@ class UIMixin:
 
 
 class TrayApp(UIMixin):
-    def __init__(self) -> None:
+    def __init__(self, show_window: bool = False) -> None:
         import pystray
 
+        self.show_window = show_window
         self.pystray = pystray
         self.stop = threading.Event()
         self.wake = threading.Event()
@@ -2499,10 +2500,11 @@ class TrayApp(UIMixin):
             needs_name = not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip())
         except AppError:
             needs_name = True  # first run: config.json was just created
-        if needs_name or not load_state().get("welcomed"):
-            self.open_window()  # first run: explain what FCAC changes, ask for the SimBrief username
+        if self.show_window or needs_name or not load_state().get("welcomed"):
+            self.open_window()  # started by hand, or first run: explain what FCAC changes, ask for the SimBrief username
         threading.Thread(target=self.poll_loop, daemon=True).start()
         threading.Thread(target=self.msfs_watch, daemon=True).start()
+        threading.Thread(target=_listen_for_show, args=(self,), daemon=True).start()
         try:
             import fcac_sim
 
@@ -2518,16 +2520,25 @@ _INSTANCE_LOCK = None
 INSTANCE_PORT = 47653   # a loopback port that only the running copy of FCAC holds
 
 
-def _claim_single_instance() -> bool:
-    """Only one FCAC at a time: a second copy would fight the first over the same files and be impossible to close."""
+def _claim_single_instance(show: bool = True) -> bool:
+    """Only one FCAC at a time: a second copy would fight the first over the same files and be impossible to close.
+    Starting FCAC again (by hand) just brings the running copy's window forward."""
     global _INSTANCE_LOCK
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind(("127.0.0.1", INSTANCE_PORT))
-        sock.listen(1)
+        sock.listen(2)
     except OSError:
         log.warning("FCAC is already running - this copy will exit")
+        if not show:
+            return False
+        try:
+            with socket.create_connection(("127.0.0.1", INSTANCE_PORT), timeout=3) as conn:
+                conn.sendall(b"show\n")
+            return False
+        except OSError:
+            pass
         text = "FCAC is already running. Look for its icon in the system tray (bottom right, under the ^ arrow)."
         if sys.platform.startswith("win"):
             try:
@@ -2542,6 +2553,23 @@ def _claim_single_instance() -> bool:
     return True
 
 
+def _listen_for_show(app: "TrayApp") -> None:
+    """A second start of FCAC knocks on our loopback port: open the window for it."""
+    sock = _INSTANCE_LOCK
+    while sock is not None and not app.stop.is_set():
+        try:
+            conn, _ = sock.accept()
+        except OSError:
+            return
+        with conn:
+            try:
+                conn.settimeout(2)
+                if conn.recv(16).startswith(b"show"):
+                    app.open_window()
+            except Exception:
+                log.exception("Could not open the window")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--community", action="store_true", help="show the detected Community folder")
@@ -2551,6 +2579,7 @@ def main() -> int:
     parser.add_argument("--uninstall", metavar="ICAO", help="uninstall an airline pack")
     parser.add_argument("--restore", metavar="ICAO", help="put an airline's original generic announcements back")
     parser.add_argument("--once", action="store_true", help="update once and exit (no tray icon)")
+    parser.add_argument("--background", action="store_true", help="start in the tray without opening the window (used by the startup entries)")
     parser.add_argument("--airline", help="with --once: airline ICAO instead of the SimBrief plan's")
     parser.add_argument("--variant", help="with --once: which recording to use when a destination has several (e.g. T5, or Standard)")
     parser.add_argument("--dest", help="with --once: destination ICAO instead of asking SimBrief")
@@ -2571,9 +2600,15 @@ def main() -> int:
     cli = (args.community or args.add_airline or args.list_packs or args.install or args.uninstall
            or args.restore or args.once)
     if not cli:
-        if not _claim_single_instance():
+        if not _claim_single_instance(show=not args.background):
             return 0
-        TrayApp().run()
+        try:  # startup entries written by older versions had no --background: rewrite them so MSFS starts FCAC quietly
+            mode = current_autostart()
+            if mode != "off":
+                apply_autostart(mode)
+        except Exception:
+            log.exception("Could not refresh the startup entry")
+        TrayApp(show_window=not args.background).run()
         return 0
     try:
         cfg = load_config()
