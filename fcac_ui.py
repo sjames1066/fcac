@@ -747,6 +747,7 @@ function packCard(p){
   const top=el("div","top"); top.append(logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
+  else if(p.catalog&&p.installed){n.append(el("span","chip ok","Installed"))}
   info.append(n);
   const ver=p.version&&p.version!=="imported"&&p.version!=="Your recordings"?(/^[0-9]/.test(p.version)?"v"+p.version:p.version):"";
   info.append(el("div","meta",[p.icao,ver,p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
@@ -755,8 +756,8 @@ function packCard(p){
   const act=el("div","act");
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
-    if(p.installed){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
-    if(p.installed){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
+    if(p.installed&&!p.catalog){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
+    if(p.installed&&!p.catalog){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");
@@ -785,7 +786,7 @@ function renderPackList(boxId,list,emptyText){
   });
 }
 function renderPacks(){
-  const mine=snap.packs.filter(p=>p.installed), more=snap.packs.filter(p=>!p.installed);
+  const mine=snap.packs.filter(p=>p.installed&&!p.catalog), more=snap.packs.filter(p=>p.catalog||!p.installed);
   renderPackList("packs",mine,"No airline packs installed yet. Open the Download Packs tab to get one.");
   renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
   $("#packsub").textContent=mine.length?mine.length+" installed":"";

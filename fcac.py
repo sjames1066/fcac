@@ -1647,15 +1647,15 @@ class UIMixin:
                           "installed": True, "update": update, "task": self.tasks.get(code),
                           "update_id": next((e["id"] for e in entries if have_entry(e) not in (None, e["version"])), "")})
         shown = {p["icao"] for p in packs}
-        for entry in self.catalog:   # what can be downloaded
-            if have_entry(entry) is not None:
-                continue
-            packs.append({"icao": entry["icao"], "key": entry["id"], "id": entry["id"], "name": entry["name"],
+        for entry in self.catalog:   # everything that can be downloaded (what you already have is marked)
+            have = have_entry(entry)
+            packs.append({"icao": entry["icao"], "key": "dl-" + entry["id"], "id": entry["id"], "catalog": True, "name": entry["name"],
                           "version": entry["version"], "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
-                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": False, "update": False,
+                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": have is not None,
+                          "update": have not in (None, entry["version"]),
                           "task": self.tasks.get(entry["id"])})
         for key, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
-            if key not in {p["key"] for p in packs} and key not in codes:
+            if key not in {p["key"] for p in packs} and key not in codes and "dl-" + key not in {p["key"] for p in packs}:
                 packs.append({"icao": key, "key": key, "name": task.get("name") or key, "version": "", "size_mb": 0,
                               "installed": False, "update": False, "task": task})
         seen = {p["icao"] for p in packs}
