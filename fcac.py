@@ -2131,7 +2131,11 @@ class UIMixin:
                 state.pop("last", None)
                 save_state(state)
                 self.wake.set()
-                return {"ok": True, "path": str(dest)}
+                finished = bool(project.get("origin"))
+                if finished:  # edits to a pack that came from your library are saved: it is no longer a pack in progress
+                    fcac_studio.discard(STUDIO_DIR, project["icao"], project["voice"])
+                    self.studio_current = None
+                return {"ok": True, "path": str(dest), "finished": finished}
             elif name == "skip":
                 fcac_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
             elif name == "logo_remove":

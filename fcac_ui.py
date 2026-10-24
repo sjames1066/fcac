@@ -1150,7 +1150,7 @@ function renderStudio(){
   const dis=el("button","ghost danger","Abandon this pack");dis.title="Deletes this project's recordings and details. Your Airlines library is not touched.";
   dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
-  const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(c.origin?"Saved to your library":"Added to your library as a voice for "+c.icao)};
+  const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};
   const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
   bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
 }
