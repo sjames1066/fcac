@@ -299,6 +299,10 @@ header img{width:46px;height:46px;border-radius:12px;box-shadow:0 6px 20px rgba(
 header h1{font-size:21px;font-weight:700;margin:0;letter-spacing:-.02em}
 header p{margin:0;color:var(--muted);font-size:12.5px}
 .spacer{flex:1}
+.cog{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:transparent;border:1px solid var(--line);color:var(--muted);cursor:pointer;transition:.15s}
+.cog:hover{color:var(--text);background:rgba(255,255,255,.07);border-color:var(--line2)}
+.cog:hover svg{transform:rotate(45deg)}
+.cog svg{transition:transform .25s}
 .switch{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;cursor:pointer;user-select:none}
 .track{width:40px;height:23px;border-radius:99px;background:var(--surface2);border:1px solid var(--line2);position:relative;transition:.2s}
 .track::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#cfc9ea;transition:.2s}
@@ -470,6 +474,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <div><h1>FCAC</h1><p>Fenix Cabin Announcements Configurator</p></div>
     <div class="spacer"></div>
     <div class="switch" id="auto"><span>Auto-update</span><div class="track"></div></div>
+    <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
   </header>
 
   <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button></nav>
@@ -487,7 +492,6 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <button class="ghost" data-open="fenix">Fenix packs folder</button>
     <button class="ghost" id="aliases-btn">Airline aliases</button>
     <button class="ghost" data-open="log">View log</button>
-    <button class="ghost" id="settings">Settings</button>
     <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
