@@ -585,6 +585,36 @@ def load_catalog(cfg: dict) -> list[dict]:
     return sorted(packs, key=lambda p: p["icao"])
 
 
+def resolve_pack_url(url: str, icao: str) -> str:
+    """A link the user pasted -> a direct .zip link. Accepts a direct .zip, a GitHub file page, or a GitHub repository /
+    releases page (the zip attached to that release, else the latest one)."""
+    url = url.strip()
+    if not _is_http(url):
+        raise AppError("Paste a link that starts with https://")
+    clean = url.split("#")[0].split("?")[0].rstrip("/")
+    if clean.lower().endswith(".zip"):
+        blob = re.match(r"https?://github\.com/([^/]+)/([^/]+)/blob/(.+)$", clean)
+        return f"https://raw.githubusercontent.com/{blob[1]}/{blob[2]}/{blob[3]}" if blob else url
+    m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/releases(?:/tag/([^/]+)|/latest)?)?$", clean)
+    if not m:
+        raise AppError("Use a link to a .zip file, or to a GitHub repository or release page.")
+    owner, repo, tag = m[1], m[2], m[3]
+    api = f"https://api.github.com/repos/{owner}/{repo}/releases/" + (f"tags/{tag}" if tag else "latest")
+    try:
+        resp = requests.get(api, timeout=20, headers={"Accept": "application/vnd.github+json"})
+    except requests.RequestException as exc:
+        raise AppError(f"Could not reach GitHub: {exc}") from exc
+    if resp.status_code == 404:
+        raise AppError("GitHub has no such release (is the repository public, and does it have a release?).")
+    if not resp.ok:
+        raise AppError(f"GitHub answered {resp.status_code}.")
+    assets = [a for a in resp.json().get("assets", []) if str(a.get("name", "")).lower().endswith(".zip")]
+    if not assets:
+        raise AppError("That GitHub release has no .zip file attached.")
+    assets.sort(key=lambda a: not str(a["name"]).upper().startswith(icao.upper()))
+    return str(assets[0]["browser_download_url"])
+
+
 def download_pack(entry: dict, dest_file: Path, progress=None) -> None:
     digest = hashlib.sha256()
     url = entry["url"]
@@ -1442,6 +1472,10 @@ class UIMixin:
             if icao not in seen:
                 packs.append({"icao": icao, "name": have.get("name", icao), "version": have.get("version", ""),
                               "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
+        for icao, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
+            if icao not in seen and icao not in installed:
+                packs.append({"icao": icao, "name": task.get("name") or icao, "version": "", "size_mb": 0,
+                              "installed": False, "update": False, "task": task})
         prompt = self.prompt
         try:
             aliases = load_aliases(cfg)
@@ -1518,6 +1552,24 @@ class UIMixin:
             fenix = ""
         return {"fenix": fenix, "originals": str(GENERIC_DIR), "recordings": str(airlines_root(cfg))}
 
+    def import_stage_path(self, icao: str) -> Path:
+        folder = DATA_DIR / "imports"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / f"{check_airline_code(icao)}.zip"
+
+    def import_local(self, icao: str, name: str, path: Path) -> dict:
+        """A pack zip from this computer, already copied to `path`: install it like a catalog pack."""
+        try:
+            icao = check_airline_code(icao)
+            if not zipfile.is_zipfile(path):
+                path.unlink(missing_ok=True)
+                return {"error": "That is not a zip file."}
+        except AppError as exc:
+            return {"error": str(exc)}
+        self.start_pack_task("install", icao, {"icao": icao, "name": name.strip()[:80] or icao, "version": "imported",
+                                               "url": str(path), "sha256": "", "size": 0, "cleanup": str(path)})
+        return {"ok": True}
+
     def ui_logo(self, icao: str) -> tuple[bytes, str]:
         try:
             return logo_png(load_config(), check_airline_code(icao)), "image/png"
@@ -1566,6 +1618,14 @@ class UIMixin:
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
+        elif name == "import_url":
+            try:
+                icao = check_airline_code(str(data.get("icao", "")))
+                zip_url = resolve_pack_url(str(data.get("url", "")), icao)
+            except AppError as exc:
+                return {"error": str(exc)}
+            self.start_pack_task("install", icao, {"icao": icao, "name": str(data.get("name", "")).strip()[:80] or icao,
+                                                   "version": "imported", "url": zip_url, "sha256": "", "size": 0})
         elif name == "uninstall":
             self.start_pack_task("uninstall", check_airline_code(str(data.get("icao", ""))))
         elif name == "update":
@@ -1958,7 +2018,7 @@ class UIMixin:
     def start_pack_task(self, kind: str, icao: str, entry: dict | None = None) -> None:
         if icao in self.tasks:
             return
-        task = {"kind": kind, "text": "Starting", "frac": 0.0 if kind == "install" else None}
+        task = {"kind": kind, "text": "Starting", "frac": 0.0 if kind == "install" else None, "name": (entry or {}).get("name", "")}
         self.tasks[icao] = task
 
         last_step = [-1]
@@ -1993,6 +2053,8 @@ class UIMixin:
                     self.lock.release()
             finally:
                 self.tasks.pop(icao, None)
+                if entry and entry.get("cleanup"):
+                    Path(entry["cleanup"]).unlink(missing_ok=True)   # the copy of an imported zip
             if ran and kind == "install":
                 self.poll_once(force=True)  # apply the current flight with the new files
             self.refresh_menu()

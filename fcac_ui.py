@@ -202,6 +202,29 @@ class UIServer:
                 parsed = urlparse(self.path)
                 path = parsed.path
                 try:
+                    if path == "/import/upload":  # a pack zip from this computer, streamed to disk (they can be hundreds of MB)
+                        q = parse_qs(parsed.query)
+                        size = int(self.headers.get("Content-Length") or 0)
+                        if size <= 0 or size > 1024 * 1024 * 1024:
+                            self.close_connection = True
+                            self._json(413, {"error": "That file is empty or larger than 1 GB."})
+                            return
+                        try:
+                            dest = server.backend.import_stage_path(q.get("icao", [""])[0])
+                        except Exception as exc:
+                            self.close_connection = True
+                            self._json(400, {"error": str(exc)})
+                            return
+                        left = size
+                        with open(dest, "wb") as out:
+                            while left > 0:
+                                chunk = self.rfile.read(min(1 << 20, left))
+                                if not chunk:
+                                    break
+                                out.write(chunk)
+                                left -= len(chunk)
+                        self._json(200, server.backend.import_local(q.get("icao", [""])[0], q.get("name", [""])[0], dest))
+                        return
                     if path == "/studio/upload":  # raw audio bytes; details in the query string
                         q = parse_qs(parsed.query)
                         size = int(self.headers.get("Content-Length") or 0)
@@ -484,7 +507,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
   <pre id="debug" class="debug" style="display:none"></pre>
 
-  <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span></div>
+  <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span><button class="ghost" id="import-btn" style="margin-left:auto">Import a pack</button></div>
   <div class="packs" id="packs"></div>
 
   <footer>
@@ -537,6 +560,20 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="row"><button class="primary" id="w-ok">Get started</button></div>
 </div></div>
 
+<div class="modal" id="m-import"><div class="dialog" style="width:540px">
+  <h3>Import an airline pack</h3>
+  <p>Add a pack from a GitHub link or a zip file on this computer. Only install packs from people you trust: a pack is a set of audio files that FCAC copies into your Fenix folder.</p>
+  <label class="small" for="i-url" style="display:block;margin:10px 0 6px;font-weight:600;color:var(--text)">From GitHub or a link</label>
+  <input type="text" id="i-url" placeholder="https://github.com/name/repo/releases/tag/baw-1.0.0 or a link to a .zip" autocomplete="off" spellcheck="false">
+  <div class="small" style="margin:12px 0 6px;font-weight:600;color:var(--text)">Or from this computer</div>
+  <div style="display:flex;gap:10px;align-items:center"><button id="i-pick">Choose a .zip file...</button><span class="small" id="i-file">No file chosen</span><input type="file" id="i-input" accept=".zip,application/zip" style="display:none"></div>
+  <div style="display:flex;gap:12px;margin-top:16px">
+    <div style="width:130px"><label class="small" for="i-icao" style="display:block;margin-bottom:6px">Airline code</label><input type="text" id="i-icao" maxlength="3" placeholder="BAW" style="text-transform:uppercase" autocomplete="off"></div>
+    <div style="flex:1"><label class="small" for="i-name" style="display:block;margin-bottom:6px">Airline name (optional)</label><input type="text" id="i-name" placeholder="British Airways" autocomplete="off"></div>
+  </div>
+  <div class="small" id="i-msg" style="margin-top:12px;color:var(--err);min-height:16px"></div>
+  <div class="row" style="margin-top:10px"><button class="ghost" id="i-cancel">Cancel</button><button class="primary" id="i-ok">Import</button></div>
+</div></div>
 <div class="modal" id="m-aliases"><div class="dialog" style="width:520px">
   <h3>Airline aliases</h3>
   <p>Use another airline's recordings, e.g. BA Shuttle (SHT) with the BAW pack.</p>
@@ -691,7 +728,7 @@ function packCard(p){
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed){const ch=el("span","chip "+(p.update?"up":"ok"),p.update?"Update available":"Installed");n.append(ch)}
   info.append(n);
-  info.append(el("div","meta",[p.icao,p.version?"v"+p.version:"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
+  info.append(el("div","meta",[p.icao,p.version?(p.version==="imported"?"Imported":"v"+p.version):"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
   if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?p.voices.length+" voices: ":"Voice: ")+p.voices.join(", ")));
   top.append(info);
   const act=el("div","act");
@@ -728,6 +765,27 @@ function renderPacks(){
   $("#packsub").textContent=snap.packs.length?inst+" of "+snap.packs.length+" installed":"";
   const errs=snap.packs.filter(p=>p.error);
 }
+let importFile=null;
+function guessCode(text){const m=(text||"").split(/[\\/]/).pop().match(/^([A-Za-z0-9]{3})(?:[_\-. ]|$)/);return m?m[1].toUpperCase():""}
+$("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-icao").value="";$("#i-name").value="";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
+$("#i-cancel").onclick=()=>$("#m-import").classList.remove("show");
+$("#i-pick").onclick=()=>$("#i-input").click();
+$("#i-input").onchange=()=>{const f=$("#i-input").files[0];importFile=f||null;$("#i-file").textContent=f?f.name+" ("+Math.round(f.size/1048576)+" MB)":"No file chosen";if(f){$("#i-url").value="";if(!$("#i-icao").value)$("#i-icao").value=guessCode(f.name)}};
+$("#i-url").oninput=()=>{if($("#i-url").value){importFile=null;$("#i-input").value="";$("#i-file").textContent="No file chosen"}if(!$("#i-icao").value||$("#i-icao").dataset.auto)$("#i-icao").value=guessCode($("#i-url").value.split("?")[0]),$("#i-icao").dataset.auto="1"};
+$("#i-icao").oninput=()=>{$("#i-icao").dataset.auto=""};
+$("#i-ok").onclick=async()=>{
+  const msg=$("#i-msg"),icao=$("#i-icao").value.trim().toUpperCase(),name=$("#i-name").value.trim(),url=$("#i-url").value.trim();msg.textContent="";
+  if(!importFile&&!url){msg.textContent="Paste a link or choose a zip file.";return}
+  if(!/^[A-Z0-9]{3}$/.test(icao)){msg.textContent="Enter the airline's 3-letter code, like BAW.";$("#i-icao").focus();return}
+  $("#i-ok").disabled=true;$("#i-ok").textContent="Importing...";
+  try{
+    let r;
+    if(importFile){const q=new URLSearchParams({icao,name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
+    else r=await api("import_url",{icao,name,url});
+    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing "+icao+" - watch its card for progress",5000)}
+  }catch(e){msg.textContent="Import failed - could not send the file."}
+  $("#i-ok").disabled=false;$("#i-ok").textContent="Import";
+};
 let aliasSig="";
 function renderAliases(){
   const sig=JSON.stringify([snap.aliases,snap.alias_sources]); if(sig===aliasSig) return; aliasSig=sig;
