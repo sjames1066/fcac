@@ -20,6 +20,7 @@ from pathlib import Path
 import fcac_audio
 
 DEFAULT_TARGET = -18.9     # LUFS every clip is set to (tested in the sim against the original Fenix announcements)
+PACKS_REPO = "sjames1066/fcac-packs"   # where exported packs are published as releases (tag = the zip name without .zip)
 EFFECT_VERSION = 3         # bump when the PA sound changes: projects are re-processed once when opened
 MAX_UPLOAD = 60 * 1024 * 1024
 AUDIO_EXT = {".wav", ".ogg", ".mp3", ".m4a", ".flac", ".webm", ".opus", ".aac"}
@@ -602,22 +603,28 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
         raise StudioError("Add at least one airport and record its name.")
     folder = project_dir(root, project["icao"], project["voice"]) / "pack"
     out_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = out_dir / f"{project['icao']}_{slug(project['voice'])}.zip"
+    version = str(project.get("version", "1.0.0")).strip() or "1.0.0"
+    pack_id = f"{project['icao'].lower()}-{re.sub(r'[^a-z0-9]+', '-', project['voice'].lower()).strip('-') or 'voice'}"
+    tag = f"{pack_id}-{version}"                  # the GitHub release tag, and the zip's name: ezy-sam-james-1.0.0
+    zip_path = out_dir / f"{tag}.zip"
+    inside = f"voices/{slug(project['voice'])}"   # the voice lives in its own folder, so several voices of one airline merge
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.rglob("*.ogg")):
-            archive.write(path, path.relative_to(folder).as_posix())
-        archive.writestr("voice.json", json.dumps(voice_json(project), indent=2))
+            archive.write(path, f"{inside}/{path.relative_to(folder).as_posix()}")
+        archive.writestr(f"{inside}/voice.json", json.dumps(voice_json(project), indent=2))
+        if project.get("scripts"):
+            archive.writestr(f"{inside}/scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
+        archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", "")}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
-        if project.get("scripts"):
-            archive.writestr("scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
-    entry = {"icao": project["icao"], "name": project["airline"], "version": project.get("version", "1.0.0"),
-             "url": zip_path.name, "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
+    entry = {"id": pack_id, "icao": project["icao"], "name": project["airline"], "voice": project["voice"], "version": version,
+             "url": f"https://github.com/{PACKS_REPO}/releases/download/{tag}/{zip_path.name}",
+             "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
              "size": zip_path.stat().st_size,
              "voices": [{k: v for k, v in voice_json(project).items() if k in ("name", "artist", "accent", "description")}]}
     entry_path = zip_path.with_suffix(".catalog.json")
     entry_path.write_text(json.dumps(entry, indent=2), encoding="utf-8")
-    return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"]}
+    return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"], "tag": tag}
 
 
 IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "dep", "dest", "fuel")

@@ -569,7 +569,12 @@ def load_catalog(cfg: dict) -> list[dict]:
         else:
             raw = _local_path(raw_url)
             resolved = str(raw if raw.is_absolute() else _local_path(url).parent / raw)
+        voice = str(entry.get("voice", "")).strip()[:40]
+        entry_id = re.sub(r"[^a-z0-9-]+", "-", str(entry.get("id", "")).strip().lower()).strip("-") or \
+            (f"{icao.lower()}-" + re.sub(r"[^a-z0-9]+", "-", voice.lower()).strip("-") if voice else icao.lower())
         packs.append({
+            "id": entry_id,
+            "voice": voice,
             "icao": icao,
             "name": str(entry.get("name", icao)),
             "version": str(entry.get("version", "")),
@@ -693,8 +698,8 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
                     shutil.copyfileobj(src, dst)
     except zipfile.BadZipFile as exc:
         raise AppError("The downloaded pack is not a valid zip file.") from exc
-    main = out_dir / MAIN_FOLDER
-    if not main.is_dir() or not any(p.is_file() for p in main.iterdir()):
+    mains = [out_dir / MAIN_FOLDER, *sorted(out_dir.glob(f"{VOICES_FOLDER}/*/{MAIN_FOLDER}"))]
+    if not any(m.is_dir() and any(p.is_file() for p in m.iterdir()) for m in mains):
         raise AppError(f"The pack zip has no '{MAIN_FOLDER}' folder with announcement files in it.")
 
 
@@ -789,8 +794,13 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
                     backup = str(backup_path)
             fenix_dir.parent.mkdir(parents=True, exist_ok=True)
             generic = lib_dir / MAIN_FOLDER
-            shutil.copytree(generic if has_ogg(generic) else staging / MAIN_FOLDER, fenix_dir,
-                            ignore=shutil.ignore_patterns("Modular_*", "modular_*"))
+            source = generic if has_ogg(generic) else staging / MAIN_FOLDER
+            if not source.is_dir():   # a pack that only has voices\\<Name>\\main: use the first voice's general announcements
+                voice_mains = sorted((staging / VOICES_FOLDER).glob(f"*/{MAIN_FOLDER}")) if (staging / VOICES_FOLDER).is_dir() else []
+                if not voice_mains:
+                    raise AppError("This pack has no general announcements (a main folder).")
+                source = voice_mains[0]
+            shutil.copytree(source, fenix_dir, ignore=shutil.ignore_patterns("Modular_*", "modular_*"))
         except OSError as exc:
             raise AppError(f"Could not install {icao} (is MSFS using the files?): {exc}") from exc
 
@@ -801,13 +811,15 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
         "backup": backup,
         "files": sorted(set(added) | {rel for rel in ours if (lib_dir / rel).is_file()}),  # what uninstall may remove
         "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "catalog": {**record.get("catalog", {}), **({entry["id"]: entry.get("version", "")} if entry.get("id") else {})},
     }
     state.pop("last", None)  # force the next update to apply the destination
     save_state(state)
     log.info("Installed pack %s v%s (%d files, %d of yours kept)", icao, entry.get("version", ""), len(added), skipped)
     version = f" v{entry['version']}" if entry.get("version") else ""
     note = f" ({skipped} of your own files kept)" if skipped else ""
-    return f"Installed {icao} - {entry.get('name', icao)}{version}{note}"
+    voice = f" ({entry['voice']})" if entry.get("voice") else ""
+    return f"Installed {icao} - {entry.get('name', icao)}{voice}{version}{note}"
 
 
 AIRLINE_NAMES = {
@@ -1579,37 +1591,54 @@ class UIMixin:
             cfg = dict(DEFAULT_CONFIG)
         state = load_state()
         installed = state.get("installed", {})
-        packs, seen = [], set()
-        for entry in self.catalog:
-            seen.add(entry["icao"])
-            have = installed.get(entry["icao"])
-            packs.append({
-                "icao": entry["icao"], "name": airline_display_name(cfg, entry["icao"], have, entry["name"]), "version": entry["version"],
-                "voices": [v["name"] for v in entry.get("voices", [])] or library_voices(cfg, entry["icao"]),
-                "voice_items": library_voice_items(cfg, entry["icao"]),
-                "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0,
-                "installed": bool(have), "update": bool(have and have.get("version") != entry["version"]),
-                "task": self.tasks.get(entry["icao"]),
-            })
-        for icao, have in sorted(installed.items()):  # installed packs stay listed even if the catalog is down
-            if icao not in seen:
-                packs.append({"icao": icao, "name": airline_display_name(cfg, icao, have), "version": have.get("version", ""),
-                              "voices": library_voices(cfg, icao), "voice_items": library_voice_items(cfg, icao), "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
-        try:  # airline folders already in your library (made in Pack Studio, or copied in by hand) count as installed
-            for folder in sorted(airlines_root(cfg).iterdir()):
-                code = folder.name.upper()
-                if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and code not in seen and code not in installed \
-                        and any(folder.rglob("*.ogg")):
-                    packs.append({"icao": code, "name": airline_display_name(cfg, code), "version": "Your recordings",
-                                  "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "size_mb": 0, "installed": True,
-                                  "update": False, "task": self.tasks.get(code)})
-                    seen.add(code)
+        packs = []
+        known_names = {e["icao"]: e["name"] for e in self.catalog}
+        voices_cache: dict[str, set] = {}
+
+        def have_entry(entry: dict) -> str | None:
+            """The installed version of this catalog entry (None = not installed). A pack installed before voices had
+            their own entries counts for the entry with no voice."""
+            record = installed.get(entry["icao"])
+            if entry.get("voice"):   # a voice that is already in your library (installed, imported or made in the Studio) is installed
+                have_voices = voices_cache.setdefault(entry["icao"], {v.lower() for v in library_voices(cfg, entry["icao"])})
+                if entry["voice"].lower() in have_voices:
+                    return ((record or {}).get("catalog", {}).get(entry["id"])) or entry["version"]
+            if not record:
+                return None
+            if "catalog" in record:
+                return record["catalog"].get(entry["id"])
+            return record.get("version", "") if not entry.get("voice") else None
+
+        # airlines on this PC: installed from the catalog / imported, or just sitting in your library
+        codes = set(installed)
+        try:
+            for folder in airlines_root(cfg).iterdir():
+                if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and any(folder.rglob("*.ogg")):
+                    codes.add(folder.name.upper())
         except OSError:
             pass
-        for icao, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
-            if icao not in seen and icao not in installed:
-                packs.append({"icao": icao, "name": task.get("name") or icao, "version": "", "size_mb": 0,
+        for code in sorted(codes):
+            have = installed.get(code)
+            entries = [e for e in self.catalog if e["icao"] == code]
+            update = any(have_entry(e) not in (None, e["version"]) for e in entries)
+            packs.append({"icao": code, "key": code, "name": airline_display_name(cfg, code, have, known_names.get(code, "")),
+                          "version": (have or {}).get("version", "Your recordings") if have else "Your recordings",
+                          "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "size_mb": 0,
+                          "installed": True, "update": update, "task": self.tasks.get(code),
+                          "update_id": next((e["id"] for e in entries if have_entry(e) not in (None, e["version"])), "")})
+        shown = {p["icao"] for p in packs}
+        for entry in self.catalog:   # what can be downloaded
+            if have_entry(entry) is not None:
+                continue
+            packs.append({"icao": entry["icao"], "key": entry["id"], "id": entry["id"], "name": entry["name"],
+                          "version": entry["version"], "voices": [v["name"] for v in entry.get("voices", [])] or ([entry["voice"]] if entry.get("voice") else []),
+                          "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0, "installed": False, "update": False,
+                          "task": self.tasks.get(entry["id"])})
+        for key, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
+            if key not in {p["key"] for p in packs} and key not in codes:
+                packs.append({"icao": key, "key": key, "name": task.get("name") or key, "version": "", "size_mb": 0,
                               "installed": False, "update": False, "task": task})
+        seen = {p["icao"] for p in packs}
         prompt = self.prompt
         try:
             aliases = load_aliases(cfg)
@@ -1767,7 +1796,9 @@ class UIMixin:
     # things the page can ask for
     def ui_action(self, name: str, data: dict) -> dict:
         if name == "install":
-            entry = next((e for e in self.catalog if e["icao"] == str(data.get("icao", "")).upper()), None)
+            wanted = str(data.get("id") or data.get("icao", "")).strip().lower()
+            entry = next((e for e in self.catalog if e["id"] == wanted), None) or \
+                next((e for e in self.catalog if e["icao"].lower() == wanted), None)
             if not entry:
                 return {"error": "That pack is not in the catalog - refresh the list."}
             self.start_pack_task("install", entry["icao"], entry)
@@ -2174,10 +2205,11 @@ class UIMixin:
 
     # install / uninstall with progress
     def start_pack_task(self, kind: str, icao: str, entry: dict | None = None) -> None:
-        if icao in self.tasks:
+        key = (entry or {}).get("id") or icao if kind == "install" else icao   # a downloadable voice has its own card
+        if key in self.tasks or (kind == "install" and icao in self.tasks):
             return
         task = {"kind": kind, "text": "Starting", "frac": 0.0 if kind == "install" else None, "name": (entry or {}).get("name", "")}
-        self.tasks[icao] = task
+        self.tasks[key] = task
 
         last_step = [-1]
 
@@ -2210,7 +2242,7 @@ class UIMixin:
                 finally:
                     self.lock.release()
             finally:
-                self.tasks.pop(icao, None)
+                self.tasks.pop(key, None)
                 if entry and entry.get("cleanup"):
                     Path(entry["cleanup"]).unlink(missing_ok=True)   # the copy of an imported zip
             if ran and kind == "install":
@@ -2281,9 +2313,12 @@ class TrayApp(UIMixin):
         rows = []
         for entry in self.catalog:
             current = installed.get(entry["icao"])
-            if current and current.get("version") == entry["version"]:
+            have = (current.get("catalog", {}).get(entry["id"]) if current and "catalog" in current
+                    else (current.get("version") if current and not entry.get("voice") else None))
+            if have == entry["version"]:
                 continue
-            label = f"{entry['icao']} - {entry['name']} v{entry['version']}" + (" (update)" if current else "")
+            label = f"{entry['icao']} - {entry['name']}" + (f" ({entry['voice']})" if entry.get("voice") else "") + \
+                f" v{entry['version']}" + (" (update)" if have is not None else "")
             rows.append(item(label, self._install_action(entry)))
         if rows:
             return rows

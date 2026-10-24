@@ -737,7 +737,7 @@ function renderHero(){
 }
 
 function packCard(p){
-  const c=el("div","card pack"); c.id="pack-"+p.icao;
+  const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
   const top=el("div","top"); top.append(logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
@@ -748,14 +748,14 @@ function packCard(p){
   top.append(info);
   const act=el("div","act");
   if(!p.task){
-    if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{icao:p.icao});act.append(b)}
+    if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{id:p.id||p.update_id||p.icao});act.append(b)}
     if(p.installed){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
     if(p.installed){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");
-    const pr=el("div","prog"); const a=el("span"); a.id="pt-"+p.icao; const b=el("b"); b.id="pp-"+p.icao; pr.append(a,b);
-    const bar=el("div","bar"); bar.id="pb-"+p.icao; bar.append(el("i")); live.append(pr,bar); act.append(live);
+    const pr=el("div","prog"); const a=el("span"); a.id="pt-"+(p.key||p.icao); const b=el("b"); b.id="pp-"+(p.key||p.icao); pr.append(a,b);
+    const bar=el("div","bar"); bar.id="pb-"+(p.key||p.icao); bar.append(el("i")); live.append(pr,bar); act.append(live);
   }
   top.append(act); c.append(top);
   return c;
@@ -763,7 +763,7 @@ function packCard(p){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.key||p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
@@ -771,7 +771,7 @@ function renderPackList(boxId,list,emptyText){
   }
   list.forEach(p=>{
     if(!p.task) return;
-    const t=$("#pt-"+p.icao),pp=$("#pp-"+p.icao),pb=$("#pb-"+p.icao); if(!t) return;
+    const t=$("#pt-"+(p.key||p.icao)),pp=$("#pp-"+(p.key||p.icao)),pb=$("#pb-"+(p.key||p.icao)); if(!t) return;
     t.textContent=p.task.text||"Working";
     const f=p.task.frac;
     pb.classList.toggle("indet",f===null||f===undefined);
@@ -788,7 +788,7 @@ function renderPacks(){
 let manageIcao=null;
 function openManage(icao){manageIcao=icao;$("#mg-new").value="";$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
 function renderManage(){
-  const p=(snap.packs||[]).find(x=>x.icao===manageIcao); if(!p){$("#m-manage").classList.remove("show");return}
+  const p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed); if(!p){$("#m-manage").classList.remove("show");return}
   $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
   const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
   if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one below."));
@@ -801,7 +801,7 @@ function renderManage(){
   });
 }
 $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
-$("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
+$("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
   const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
 let importFile=null;
 $("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
@@ -1166,7 +1166,7 @@ function renderStudio(){
   dis.onclick=()=>confirmDiscard(c);
   const fol=el("button","ghost","Open project folder");fol.onclick=()=>api("studio_folder",pid(c));
   const use=el("button",null,c.origin?"Save changes to my library":"Use in FCAC now");use.onclick=async()=>{const r=await studio("install",pid(c));if(r.ok)toast(r.finished?"Saved to your library":"Added to your library as a voice for "+c.icao)};
-  const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - the folder is open")};
+  const ex=el("button","primary","Export pack zip");ex.onclick=async()=>{const r=await studio("export",pid(c));if(r.ok)toast("Exported - release tag: "+(r.tag||"")+" (the folder is open)",9000)};
   bar2.append(dis,fol,use,ex);root.append(bar2);syncPlayer();
 }
 
