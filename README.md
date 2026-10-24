@@ -258,18 +258,21 @@ python fcac.py --once                   one update from SimBrief
 python fcac.py --once --airline BAW --dest BIKF     force a flight, skip SimBrief
 ```
 
-## Start with Windows / build an .exe
+## Build the installer
 
-```
-pip install pyinstaller
-pyinstaller --noconsole --onefile --icon fcac.ico fcac.py
-```
+Double-click **Build EXE.bat**. It builds FCAC as a folder (`dist\FCAC\FCAC.exe` with its files beside it, not one
+self-extracting file, which antivirus programs distrust less). If [Inno Setup 6](https://jrsoftware.org/isdl.php) is
+installed it then also makes `dist\FCAC-Setup-<version>.exe` from `installer.iss`.
 
-`fcac.ico` gives the .exe and its shortcuts the FCAC icon. The tray icon is drawn by `fcac_icon.py`, which is bundled
+The installer puts FCAC in `%LOCALAPPDATA%\Programs\FCAC` (no administrator needed), adds Start menu and optional
+desktop shortcuts, can start FCAC quietly with Windows, and uninstalls from Windows' Apps list. Your recordings, packs
+and settings (`%LOCALAPPDATA%\FCAC`) are kept when you uninstall or update.
+
+Windows may still warn about an unknown publisher until the installer is code-signed. If your antivirus flags a build,
+report it as a false positive to the vendor (Microsoft: https://www.microsoft.com/wdsi/filesubmission).
+
+`fcac.ico` gives the program and its shortcuts the FCAC icon. The tray icon is drawn by `fcac_icon.py`, which is bundled
 automatically; run `python fcac_icon.py` to re-export `fcac.ico` and `fcac_icon.png` if you change the design.
-
-Put `config.json` and the `Airlines` folder next to `dist\fcac.exe`. To start with Windows, put a shortcut to it in
-`shell:startup`.
 
 ## Pack Studio (make your own pack)
 
