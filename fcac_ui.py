@@ -284,6 +284,20 @@ class UIServer:
                         log.exception("Could not start %s", exe)
             webbrowser.open(url)  # no Edge/Chrome found: the default browser still works
 
+    def close_window(self) -> None:
+        """Close the FCAC window (the browser process it runs in, with its helper processes)."""
+        proc = self.window
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=8,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            else:
+                proc.terminate()
+        except (OSError, subprocess.SubprocessError):
+            log.exception("Could not close the window")
+
     def page(self) -> str:
         faces = "\n".join(
             f"@font-face{{font-family:'Inter';font-weight:{w};font-style:normal;font-display:swap;"

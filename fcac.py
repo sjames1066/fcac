@@ -2389,6 +2389,10 @@ class TrayApp(UIMixin):
     def quit(self) -> None:
         self.stop.set()
         self.wake.set()
+        try:
+            self.ui.close_window()   # the window is a separate browser process: it would otherwise stay open
+        except Exception:
+            log.exception("Could not close the window")
         self.icon.stop()
 
     # status -------------------------------------------------------------
