@@ -120,7 +120,7 @@ DEFAULT_CONFIG = {
 
 log = logging.getLogger("fcac")
 
-DEBUG = True  # shows a red debug panel in the window (what was built, live landing events). Set False for a public release.
+DEBUG = False
 
 
 class _DebugBuffer(logging.Handler):
@@ -1506,7 +1506,6 @@ class UIMixin:
         return {
             "version": VERSION,
             "company": company,
-            "debug": DEBUG_BUFFER.lines[-14:] if DEBUG else None,
             "voices": voices,
             "hide_reminder": bool(cfg.get("hide_reminder")),
             "welcome": self._welcome_info(cfg, state),

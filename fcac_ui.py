@@ -345,9 +345,6 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
 .hero .company .ids{font-weight:500;color:var(--muted);letter-spacing:.02em}
 .hero .company .nm + .ids{margin-left:12px;padding-left:12px;border-left:1px solid var(--line2)}
-.debug{margin:-12px 0 22px;padding:12px 16px;border:1px solid rgba(255,93,93,.45);border-radius:14px;background:rgba(255,93,93,.07);
-       color:#ff6b6b;font:12px/1.55 Consolas,'Cascadia Mono',monospace;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
-.debug::before{content:"DEBUG - hidden in the release build";display:block;font:700 10px 'Inter',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#ff4d4d;margin-bottom:6px}
 .hero .side .credit a{color:var(--muted);text-decoration:none}
 .hero .side .desc{font-style:italic;max-width:300px}
 .voicerow{display:flex;align-items:center;gap:10px}
@@ -500,24 +497,23 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
   </header>
 
-  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button></nav>
+  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button></nav>
   <div id="view-main">
   <section class="card hero" id="hero"></section>
   <div class="keepopen slim" id="keep-note"><button class="keepx" id="keep-x" title="Close this reminder" aria-label="Close this reminder">&times;</button><b>Keep FCAC running during your flight</b><span>It builds the landing announcement with the real local time once you have landed. Leave it in the tray until you have parked.</span>
     <label class="keepno"><input type="checkbox" id="keep-never"> Don't remind me again</label></div>
-  <pre id="debug" class="debug" style="display:none"></pre>
 
-  <div class="section-head"><h2>Airline packs</h2><span id="packsub"></span><button class="ghost" id="import-btn" style="margin-left:auto">Import a pack</button></div>
+  <div class="section-head"><h2>Installed airline packs</h2><span id="packsub"></span></div>
   <div class="packs" id="packs"></div>
 
   <footer>
-    <button class="ghost" data-open="airlines">Your recordings</button>
-    <button class="ghost" data-open="fenix">Fenix packs folder</button>
     <button class="ghost" id="aliases-btn">Airline aliases</button>
-    <button class="ghost" data-open="log">View log</button>
-    <button class="ghost" id="refresh">Refresh packs</button>
     <button class="ghost" id="forget">Forget terminal choices</button>
   </footer>
+  </div>
+  <div id="view-dl" style="display:none">
+    <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
+    <div class="packs" id="dlpacks"></div>
   </div>
   <div id="view-studio" style="display:none"></div>
   <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button><div class="small" id="lib" style="margin-top:14px"></div></div>
@@ -603,6 +599,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
       <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
     </div></div>
+  <div class="setting"><div class="label">Fenix packs folder and log</div>
+    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where FCAC puts your announcements for the Fenix.</span></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
   <div class="setting"><div class="label">Local time in the landing announcement</div>
     <div class="radios" id="s-time">
       <div class="radio" data-v="yes"><b>Say the local time</b><span>"&hellip;where the local time is four thirty-five", read from the sim once you have landed</span></div>
@@ -671,11 +670,6 @@ function confirmDiscard(p){
 function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),ms||3200)}
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
-function renderDebug(){
-  const d=$("#debug"); if(!snap.debug||!snap.debug.length){d.style.display="none";return}
-  const text=snap.debug.join("\n"); if(d.dataset.t===text) return; d.dataset.t=text;
-  d.style.display="block"; d.textContent=text; d.scrollTop=d.scrollHeight;
-}
 let heroSig="", keepClosed=false;
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
@@ -744,16 +738,16 @@ function packCard(p){
   top.append(act); c.append(top);
   return c;
 }
-function renderPacks(){
-  const box=$("#packs"); const sig=JSON.stringify([snap.packs.map(p=>[p.icao,p.installed,p.update,!!p.task,p.name,p.version]),snap.busy,snap.catalog_error,snap.logo_v]);
-  if(sig!==structSig){
-    structSig=sig; box.replaceChildren();
-    if(!snap.packs.length){
-      const e=el("div","empty",snap.catalog_error||"No airline packs available yet."); e.style.gridColumn="1/-1"; box.append(e);
-    }
-    snap.packs.forEach(p=>box.append(packCard(p)));
+const packSigs={};
+function renderPackList(boxId,list,emptyText){
+  const box=$("#"+boxId);
+  const sig=JSON.stringify([list.map(p=>[p.icao,p.installed,p.update,!!p.task,p.name,p.version]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  if(sig!==packSigs[boxId]){
+    packSigs[boxId]=sig; box.replaceChildren();
+    if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
+    list.forEach(p=>box.append(packCard(p)));
   }
-  snap.packs.forEach(p=>{
+  list.forEach(p=>{
     if(!p.task) return;
     const t=$("#pt-"+p.icao),pp=$("#pp-"+p.icao),pb=$("#pb-"+p.icao); if(!t) return;
     t.textContent=p.task.text||"Working";
@@ -761,9 +755,13 @@ function renderPacks(){
     pb.classList.toggle("indet",f===null||f===undefined);
     if(f!==null&&f!==undefined){pp.textContent=Math.round(f*100)+"%";pb.firstChild.style.width=(f*100)+"%"}else pp.textContent="";
   });
-  const inst=snap.packs.filter(p=>p.installed).length;
-  $("#packsub").textContent=snap.packs.length?inst+" of "+snap.packs.length+" installed":"";
-  const errs=snap.packs.filter(p=>p.error);
+}
+function renderPacks(){
+  const mine=snap.packs.filter(p=>p.installed), more=snap.packs.filter(p=>!p.installed);
+  renderPackList("packs",mine,"No airline packs installed yet. Open the Download Packs tab to get one.");
+  renderPackList("dlpacks",more,snap.catalog_error||(snap.packs.length?"Every available pack is installed.":"No airline packs are available to download yet. You can still use Import a pack."));
+  $("#packsub").textContent=mine.length?mine.length+" installed":"";
+  $("#dlsub").textContent=more.length?more.length+" available":"";
 }
 let importFile=null;
 function guessCode(text){const m=(text||"").split(/[\\/]/).pop().match(/^([A-Za-z0-9]{3})(?:[_\-. ]|$)/);return m?m[1].toUpperCase():""}
@@ -874,9 +872,9 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 
 // ---------------------------------------------------------------- Pack Studio
 let view="main", studioSig="", recState=null, openGroups=new Set(["Welcome aboard"]), playing=null;
-function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";
-  $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");if(v==="studio"){studioSig="";renderStudio()}}
-$("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio");
+function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";$("#view-dl").style.display=v==="dl"?"":"none";
+  $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");$("#tab-dl").classList.toggle("on",v==="dl");if(v==="studio"){studioSig="";renderStudio()}}
+$("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl");
 
 function field(label,key,cur,ph,wide){const l=el("label",wide?"wide":"",label);const i=el("input");i.type="text";i.value=cur[key]||"";i.placeholder=ph||"";i.dataset.k=key;l.append(i);return l}
 function pid(c){return {icao:c.icao,voice:c.voice}}
@@ -1145,7 +1143,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||""); $("#lib").textContent=snap.library?"Recordings folder: "+snap.library:"";
-    renderHero(); renderKeep(); renderDebug(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKeep(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }
