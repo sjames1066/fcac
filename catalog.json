@@ -1,8 +1,8 @@
 {
   "app": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "url": "https://github.com/sjames1066/fcac",
-    "notes": ""
+    "notes": "Download Packs tab, Manage voices, import packs, new PA sound"
   },
   "packs": []
 }
