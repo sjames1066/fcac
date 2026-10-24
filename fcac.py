@@ -1599,7 +1599,7 @@ class UIMixin:
             for folder in sorted(airlines_root(cfg).iterdir()):
                 code = folder.name.upper()
                 if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and code not in seen and code not in installed \
-                        and any(folder.iterdir()):
+                        and any(folder.rglob("*.ogg")):
                     packs.append({"icao": code, "name": airline_display_name(cfg, code), "version": "Your recordings",
                                   "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "size_mb": 0, "installed": True,
                                   "update": False, "task": self.tasks.get(code)})
