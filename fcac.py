@@ -820,12 +820,40 @@ def airline_display_name(cfg: dict, icao: str, record: dict | None = None, catal
     return AIRLINE_NAMES.get(icao.upper(), icao.upper())
 
 
-def library_voices(cfg: dict, icao: str) -> list[str]:
+def library_voice_items(cfg: dict, icao: str) -> list[dict]:
+    """The voices of an airline in your library: [{"key", "name"}] (key is what Pack Studio opens, "Default" is the airline's own folder)."""
     try:
-        found = list_voices(airline_folder(cfg, icao))
-        return [voice_info(path, key)["name"] for key, path in found.items() if key != DEFAULT_VOICE]
+        folder = airline_folder(cfg, icao)
+        found = list_voices(folder)
+        if DEFAULT_VOICE not in found and has_ogg(folder / MAIN_FOLDER):
+            found = {DEFAULT_VOICE: folder, **found}
+        return [{"key": key, "name": voice_info(path, key)["name"]} for key, path in found.items()]
     except (OSError, AppError):
         return []
+
+
+def library_voices(cfg: dict, icao: str) -> list[str]:
+    return [v["name"] for v in library_voice_items(cfg, icao) if v["key"] != DEFAULT_VOICE]
+
+
+def remove_voice(cfg: dict, icao: str, key: str) -> str:
+    """Take one voice out of an airline: its folder is moved to the FCAC backups folder, not deleted."""
+    icao = check_airline_code(icao)
+    folder = airline_folder(cfg, icao) / VOICES_FOLDER / key
+    if not key or key == DEFAULT_VOICE or Path(key).name != key or not folder.is_dir():
+        raise AppError("That voice cannot be removed here.")
+    try:
+        BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(folder), str(BACKUPS_DIR / f"{icao}-voice-{key}-{time.strftime('%Y%m%d-%H%M%S')}"))
+    except OSError as exc:
+        raise AppError(f"Could not remove the voice (is MSFS using the files?): {exc}") from exc
+    state = load_state()
+    if state.get("voices", {}).get(icao) == key:
+        state["voices"].pop(icao)
+    state.pop("last", None)
+    save_state(state)
+    log.info("Removed voice %s from %s (kept in backups)", key, icao)
+    return f"Removed the {key} voice from {icao}"
 
 
 def uninstall_pack(cfg: dict, icao: str) -> str:
@@ -1524,6 +1552,7 @@ class UIMixin:
             packs.append({
                 "icao": entry["icao"], "name": airline_display_name(cfg, entry["icao"], have, entry["name"]), "version": entry["version"],
                 "voices": [v["name"] for v in entry.get("voices", [])] or library_voices(cfg, entry["icao"]),
+                "voice_items": library_voice_items(cfg, entry["icao"]),
                 "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0,
                 "installed": bool(have), "update": bool(have and have.get("version") != entry["version"]),
                 "task": self.tasks.get(entry["icao"]),
@@ -1531,14 +1560,14 @@ class UIMixin:
         for icao, have in sorted(installed.items()):  # installed packs stay listed even if the catalog is down
             if icao not in seen:
                 packs.append({"icao": icao, "name": airline_display_name(cfg, icao, have), "version": have.get("version", ""),
-                              "voices": library_voices(cfg, icao), "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
+                              "voices": library_voices(cfg, icao), "voice_items": library_voice_items(cfg, icao), "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
         try:  # airline folders already in your library (made in Pack Studio, or copied in by hand) count as installed
             for folder in sorted(airlines_root(cfg).iterdir()):
                 code = folder.name.upper()
                 if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and code not in seen and code not in installed \
                         and any(folder.iterdir()):
                     packs.append({"icao": code, "name": airline_display_name(cfg, code), "version": "Your recordings",
-                                  "voices": library_voices(cfg, code), "size_mb": 0, "installed": True,
+                                  "voices": library_voices(cfg, code), "voice_items": library_voice_items(cfg, code), "size_mb": 0, "installed": True,
                                   "update": False, "task": self.tasks.get(code)})
                     seen.add(code)
         except OSError:
@@ -1696,6 +1725,12 @@ class UIMixin:
                 return {"error": str(exc)}
             self.start_pack_task("install", icao, {"icao": icao, "name": str(data.get("name", "")).strip()[:80] or icao,
                                                    "version": "imported", "url": zip_url, "sha256": "", "size": 0})
+        elif name == "remove_voice":
+            try:
+                message = remove_voice(load_config(), str(data.get("icao", "")), str(data.get("voice", "")))
+            except AppError as exc:
+                return {"error": str(exc)}
+            self.set_status(message)
         elif name == "uninstall":
             self.start_pack_task("uninstall", check_airline_code(str(data.get("icao", ""))))
         elif name == "update":

@@ -556,6 +556,14 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="row"><button class="primary" id="w-ok">Get started</button></div>
 </div></div>
 
+<div class="modal" id="m-manage"><div class="dialog" style="width:540px">
+  <h3 id="mg-title">Manage pack</h3>
+  <p id="mg-sub" class="small"></p>
+  <div id="mg-voices"></div>
+  <div style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="text" id="mg-new" placeholder="New voice name, e.g. Emma" maxlength="40" autocomplete="off" style="flex:1"><button id="mg-add">Add a voice</button></div>
+  <div class="small" id="mg-msg" style="margin-top:10px;color:var(--err);min-height:16px"></div>
+  <div class="row" style="margin-top:8px"><button class="primary" id="mg-done">Done</button></div>
+</div></div>
 <div class="modal" id="m-import"><div class="dialog" style="width:540px">
   <h3>Import an airline pack</h3>
   <p>Add a pack from a GitHub link or a zip file on this computer. Only install packs from people you trust: a pack is a set of audio files that FCAC copies into your Fenix folder.</p>
@@ -729,6 +737,7 @@ function packCard(p){
   const act=el("div","act");
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{icao:p.icao});act.append(b)}
+    if(p.installed){const m=el("button","ghost","Manage");m.disabled=snap.busy;m.onclick=()=>openManage(p.icao);act.append(m)}
     if(p.installed){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
@@ -742,7 +751,7 @@ function packCard(p){
 const packSigs={};
 function renderPackList(boxId,list,emptyText){
   const box=$("#"+boxId);
-  const sig=JSON.stringify([list.map(p=>[p.icao,p.installed,p.update,!!p.task,p.name,p.version]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
+  const sig=JSON.stringify([list.map(p=>[p.icao,p.installed,p.update,!!p.task,p.name,p.version,p.voices]),snap.busy,snap.catalog_error,snap.logo_v,emptyText]);
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
@@ -764,6 +773,24 @@ function renderPacks(){
   $("#packsub").textContent=mine.length?mine.length+" installed":"";
   $("#dlsub").textContent=more.length?more.length+" available":"";
 }
+let manageIcao=null;
+function openManage(icao){manageIcao=icao;$("#mg-new").value="";$("#mg-msg").textContent="";renderManage();$("#m-manage").classList.add("show")}
+function renderManage(){
+  const p=(snap.packs||[]).find(x=>x.icao===manageIcao); if(!p){$("#m-manage").classList.remove("show");return}
+  $("#mg-title").textContent="Manage "+p.name; $("#mg-sub").textContent=p.icao+" - open a voice in Pack Studio to re-record or fix it, or take a voice out of the airline.";
+  const box=$("#mg-voices"); const items=p.voice_items||[]; const sig=JSON.stringify(items); if(box.dataset.s===sig) return; box.dataset.s=sig; box.replaceChildren();
+  if(!items.length) box.append(el("div","empty","This airline has no voices yet. Add one below."));
+  items.forEach(v=>{
+    const row=el("div","card"); row.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-top:8px";
+    const nm=el("div","name",v.key==="Default"?(v.name==="Default"?"Main recordings":v.name):v.name); nm.style.flex="1"; row.append(nm);
+    const ed=el("button","ghost","Edit in Pack Studio"); ed.onclick=async()=>{const r=await studio("import",{icao:p.icao,voice:v.key});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}}; row.append(ed);
+    if(v.key!=="Default"){const rm=el("button","danger","Remove");rm.onclick=async()=>{if(!confirm("Remove the "+v.name+" voice from "+p.name+"?\nA copy is kept in the FCAC backups folder."))return;const r=await api("remove_voice",{icao:p.icao,voice:v.key});if(r.ok){box.dataset.s="";toast("Removed "+v.name)}};row.append(rm)}
+    box.append(row);
+  });
+}
+$("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
+$("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
+  const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
 let importFile=null;
 function guessCode(text){const m=(text||"").split(/[\\/]/).pop().match(/^([A-Za-z0-9]{3})(?:[_\-. ]|$)/);return m?m[1].toUpperCase():""}
 $("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-icao").value="";$("#i-name").value="";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
@@ -1144,7 +1171,7 @@ async function tick(){
   try{
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
-    renderHero(); renderKeep(); renderJob(); renderStudio(); renderPacks(); renderAliases(); renderWelcome(); renderPrompt();
+    renderHero(); renderKeep(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }
