@@ -1906,15 +1906,8 @@ class UIMixin:
 
     # Pack Studio ---------------------------------------------------------
     def studio_target(self, cfg: dict, icao: str) -> tuple[float, int, str]:
-        """Loudness (LUFS) to set recordings to = that of the original announcements -> (LUFS, clips measured, source)."""
-        cache = self.__dict__.setdefault("_studio_targets", {})
-        if icao in cache:
-            return cache[icao]
-        self.studio_job("Measuring the original announcements", 0.0)
-        try:
-            return self._measure_target(cfg, icao, cache)
-        finally:
-            self.studio_job(None)
+        """Loudness (LUFS) every clip is set to -> (LUFS, 0, ""). A fixed level, no measuring."""
+        return fcac_studio.DEFAULT_TARGET, 0, ""
 
     def studio_job(self, label: str | None, fraction: float | None = None) -> None:
         """What the Studio is busy with, shown as a loading bar in the window."""
@@ -1967,12 +1960,7 @@ class UIMixin:
                 project = fcac_studio.load(STUDIO_DIR, *current)
             except fcac_studio.StudioError:
                 return out
-            if project["icao"] not in self.__dict__.setdefault("_studio_targets", {}):
-                if not getattr(self, "_studio_job", None):  # measure in the background so the window stays responsive
-                    threading.Thread(target=self.studio_target, args=(cfg, project["icao"]), daemon=True).start()
-                target, count, label = fcac_studio.DEFAULT_TARGET, 0, "measuring..."
-            else:
-                target, count, label = self.studio_target(cfg, project["icao"])
+            target, count, label = fcac_studio.DEFAULT_TARGET, 0, ""
             rows = fcac_studio.status(STUDIO_DIR, project)
             out["current"] = {
                 "icao": project["icao"], "airline": project["airline"], "voice": project["voice"],
@@ -1980,7 +1968,7 @@ class UIMixin:
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
                 "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
-                "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": label == "measuring...", "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
+                "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
         return out
@@ -2058,6 +2046,15 @@ class UIMixin:
                                 pass
                 except Exception:
                     log.exception("Could not finish unprocessed recordings")
+                try:   # the PA sound was changed since this pack was last processed: redo the clips from your untouched recordings
+                    if project.get("effect", True) and project.get("fx") != fcac_studio.EFFECT_VERSION:
+                        if any(fcac_studio.raw_takes(fcac_studio.project_dir(STUDIO_DIR, project["icao"], project["voice"]) / "raw", s)
+                               for s in fcac_studio.slot_list(project)):
+                            fcac_studio.reprocess_all(STUDIO_DIR, project, fcac_studio.DEFAULT_TARGET)
+                        project["fx"] = fcac_studio.EFFECT_VERSION
+                        fcac_studio.save(STUDIO_DIR, project)
+                except Exception:
+                    log.exception("Could not re-process with the new PA sound")
                 return {"ok": True}
             if name == "discard":
                 project = self.studio_project(data)

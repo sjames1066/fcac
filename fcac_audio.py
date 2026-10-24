@@ -210,21 +210,24 @@ def _compress(x: np.ndarray, rate: int, threshold_db: float = -26.0, ratio: floa
 
 
 def pa_effect(data: np.ndarray, rate: int) -> np.ndarray:
-    """The FCAC cabin-PA sound: band-limited speaker voice, a little presence, gentle compression and warmth."""
+    """The FCAC cabin-PA sound: a thin, tinny overhead-speaker voice - narrow band (about 550 Hz to 3.3 kHz), a nasal
+    peak, a touch of harsh edge, firm compression and a little grit."""
     mono = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
 
     def shape(f):
         f = np.maximum(f, 1.0)
-        high_pass = f ** 2 / np.sqrt(f ** 4 + 300.0 ** 4)            # 300 Hz, 2nd order
-        low_pass = 1.0 / np.sqrt(1.0 + (f / 4200.0) ** 8)             # 4.2 kHz, 4th order
-        presence = 1.0 + 0.6 * np.exp(-0.5 * (np.log2(f / 1800.0) / 0.55) ** 2)  # about +4 dB near 1.8 kHz
-        return high_pass * low_pass * presence
+        high_pass = f ** 4 / (f ** 4 + 550.0 ** 4)                    # 550 Hz, steep: no body, no chest
+        low_pass = 1.0 / np.sqrt(1.0 + (f / 3300.0) ** 8)             # 3.3 kHz, 4th order: no air
+        nasal = 1.0 + 1.1 * np.exp(-0.5 * (np.log2(f / 1700.0) / 0.45) ** 2)    # about +6 dB around 1.7 kHz
+        edge = 1.0 + 0.5 * np.exp(-0.5 * (np.log2(f / 2800.0) / 0.3) ** 2)      # a harsh little spike near 2.8 kHz
+        return high_pass * low_pass * nasal * edge
 
     y = _apply_response(mono.astype("float32"), rate, shape)
     peak = float(np.max(np.abs(y))) or 1.0
-    y = _compress(y / peak * 0.5, rate)
-    drive = 1.8
-    y = np.tanh(drive * y) / np.tanh(drive)  # soft saturation
+    y = _compress(y / peak * 0.5, rate, threshold_db=-28.0, ratio=4.0)
+    drive = 3.0
+    y = np.tanh(drive * y) / np.tanh(drive)  # harder saturation: the grit of an overdriven cabin speaker
+    y = _apply_response(y.astype("float32"), rate, shape)  # the speaker's own band-limiting again after the distortion
     return y[:, None].astype("float32")
 
 

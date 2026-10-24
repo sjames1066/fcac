@@ -1103,7 +1103,7 @@ function renderStudio(){
   [[true,"Cabin-PA sound on","Band-limited speaker voice with light compression, like the original announcements. Recommended."],[false,"Leave my recording as it is","Only the loudness is matched."]].forEach(([v,t,sub])=>{
     const r=el("div","radio"+(c.effect===v?" sel":""));r.append(el("b",null,t),el("span",null,sub));r.onclick=async()=>{if(c.effect===v)return;toast("Reprocessing...");await studio("details",{...save(),effect:v});toast("Reprocessed with "+(v?"the PA sound":"no effect"))};ef.append(r)});
   card.append(ef);
-  card.append(el("div","sd-meta",(c.target_pending?"Measuring the original announcements to set the loudness...":"Every clip is set to "+c.target+" LUFS, "+(c.target_count?"the average of "+c.target_count+" original announcements from "+c.target_source+".":"a standard level, because no original announcements were found.")+" Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time.")));
+  card.append(el("div","sd-meta","Every clip is set to "+c.target+" LUFS, the same level as the original Fenix announcements. Record in a quiet room, about a hand's width from the microphone. Your untouched recording is always kept, so you can switch the effect on or off any time."));
   root.append(card);
   if(c.upgrades&&c.upgrades.length){const b=el("section","card");b.style.cssText="margin-top:16px;display:flex;gap:14px;align-items:center;justify-content:space-between";
     b.append(el("div",null,c.upgrades.length+" clip"+(c.upgrades.length>1?"s use":" uses")+" Fenix's old file names (like CrewSeatsLanding). Upgrade them to the new names to use the new features."));
