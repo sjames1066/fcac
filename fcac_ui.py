@@ -1068,7 +1068,7 @@ function renderStudio(){
     const row=el("div","row");row.style.marginTop="14px";const go=el("button","primary","Start a new pack");
     go.onclick=async()=>{const r=await studio("create",{icao:i1.value,airline:i2.value,voice:i3.value});if(r.ok)toast("Pack started")};row.append(go);card.append(row);root.append(card);
     if(s.library&&s.library.length){const h=el("div","section-head");h.append(el("h2",null,"Edit a pack from your library"),el("span",null,"change clips, add airports, fix a recording"));root.append(h);
-      s.library.forEach(p=>{const b=el("button","ghost",p.icao+" · "+p.name);b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
+      s.library.forEach(p=>{const b=el("button","ghost",p.icao+" - "+p.name);b.style.margin="0 8px 8px 0";b.onclick=async()=>{const r=await studio("import",p);if(r.ok)toast("Opened for editing - your clips are unchanged until you replace them")};root.append(b)})}
     if(s.projects.length){const h=el("div","section-head");h.append(el("h2",null,"Your packs in progress"));root.append(h);
       s.projects.forEach(p=>{const w=el("span","chip2");w.style.margin="0 8px 8px 0";const b=el("button","ghost",p.icao+" · "+p.voice+(p.airline?" · "+p.airline:""));b.style.cssText="width:auto;height:auto;border-radius:10px;padding:6px 10px;color:var(--text)";b.onclick=()=>studio("open",p);
         const x=el("button",null,"✕");x.title="Abandon this pack";x.onclick=()=>confirmDiscard(p);
