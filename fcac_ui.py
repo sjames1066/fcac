@@ -722,13 +722,13 @@ function packCard(p){
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed){const ch=el("span","chip "+(p.update?"up":"ok"),p.update?"Update available":"Installed");n.append(ch)}
   info.append(n);
-  info.append(el("div","meta",[p.icao,p.version?(p.version==="imported"?"Imported":"v"+p.version):"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
+  info.append(el("div","meta",[p.icao,p.version?(p.version==="imported"?"Imported":/^[0-9]/.test(p.version)?"v"+p.version:p.version):"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
   if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?p.voices.length+" voices: ":"Voice: ")+p.voices.join(", ")));
   top.append(info);
   const act=el("div","act");
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{icao:p.icao});act.append(b)}
-    if(p.installed){const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm("Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
+    if(p.installed&&p.version!=="Your recordings"){const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm("Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");

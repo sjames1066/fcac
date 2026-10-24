@@ -1472,6 +1472,16 @@ class UIMixin:
             if icao not in seen:
                 packs.append({"icao": icao, "name": have.get("name", icao), "version": have.get("version", ""),
                               "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
+        try:  # airline folders already in your library (made in Pack Studio, or copied in by hand) count as installed
+            for folder in sorted(airlines_root(cfg).iterdir()):
+                code = folder.name.upper()
+                if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and code not in seen and code not in installed \
+                        and any(folder.iterdir()):
+                    packs.append({"icao": code, "name": code, "version": "Your recordings", "size_mb": 0, "installed": True,
+                                  "update": False, "task": self.tasks.get(code)})
+                    seen.add(code)
+        except OSError:
+            pass
         for icao, task in list(self.tasks.items()):   # a pack being imported that is not in the catalog yet
             if icao not in seen and icao not in installed:
                 packs.append({"icao": icao, "name": task.get("name") or icao, "version": "", "size_mb": 0,
@@ -2240,7 +2250,7 @@ class TrayApp(UIMixin):
             self.icon.title = f"{APP_NAME}: {self.status}"[:127]
             self.icon.update_menu()
             if notify:
-                self.icon.notify(text, APP_NAME)
+                self.icon.notify(text if len(text) <= 250 else text[:247] + "...", APP_NAME)
         except Exception:  # tray backends can be flaky; never let that kill the worker
             log.exception("Tray update failed")
 
