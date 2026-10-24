@@ -4,5 +4,24 @@
     "url": "https://github.com/sjames1066/fcac",
     "notes": "Download Packs tab, Manage voices, import packs, new PA sound"
   },
-  "packs": []
+  "packs": [
+    {
+      "id": "ezy-sam-james",
+      "icao": "EZY",
+      "name": "easyJet",
+      "voice": "Sam James",
+      "version": "1.0.0",
+      "url": "https://github.com/sjames1066/fcac-packs/releases/download/ezy-sam-james-1.0.0/ezy-sam-james-1.0.0.zip",
+      "sha256": "42af03146c5b23829eb993eea2a7c57908dc36aa1afe5f03d1c156ddf9a0ffcf",
+      "size": 10110413,
+      "voices": [
+        {
+          "name": "Sam James",
+          "artist": "Sam James",
+          "accent": "British",
+          "description": "Test pack"
+        }
+      ]
+    }
+  ]
 }
