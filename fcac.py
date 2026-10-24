@@ -1386,6 +1386,8 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
         return f"Landed at {dest}"
     if not arrival:
         return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
+    if not airline_has_pack(cfg, airline):
+        return f"Landed at {dest} - no {airline} airline pack installed, nothing changed"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
     message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
                                 voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None)
@@ -1415,6 +1417,16 @@ def restore_generic(cfg: dict, icao: str) -> str:
 APPLIED_MARK = " - your announcements are in place"   # the dashboard turns this into a green flight card
 
 
+def airline_has_pack(cfg: dict, code: str) -> bool:
+    """Is there anything to play for this airline (its recordings, after any alias)? If not FCAC does nothing: it creates
+    no folders and sends nothing to the Fenix folder."""
+    try:
+        folder = airline_folder(cfg, load_aliases(cfg).get(code, code))
+        return folder.is_dir() and (bool(list_voices(folder)) or has_ogg(folder / MAIN_FOLDER))
+    except (AppError, OSError):
+        return False
+
+
 def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str | None = None,
            variant: str | None = None) -> tuple[bool, str]:
     """Look up the flight (or use the given one) and apply it. Returns (changed, message)."""
@@ -1437,6 +1449,12 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         return False, f"{code} to {flight['icao']}: landing PA built from the sim's local time"
     if not force and state.get("last") == key:
         return False, f"Unchanged: {code} to {flight['icao']}"
+    if not airline_has_pack(cfg, code):   # no pack (no recordings) for this airline: leave everything alone
+        state = load_state()
+        state["applied"] = False
+        state.pop("last", None)
+        save_state(state)
+        return False, f"{code} to {flight['icao']}: no {code} airline pack installed - nothing changed"
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"))
     state = load_state()
     state["last"] = key

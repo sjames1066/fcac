@@ -617,11 +617,16 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
         archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", "")}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
+    has_logo = logo_path(root, project).is_file()
+    if has_logo:   # also saved beside the zip: attach it to the release too, so Download Packs can show the logo
+        shutil.copyfile(logo_path(root, project), out_dir / f"{tag}.png")
     entry = {"id": pack_id, "icao": project["icao"], "name": project["airline"], "voice": project["voice"], "version": version,
              "url": f"https://github.com/{PACKS_REPO}/releases/download/{tag}/{zip_path.name}",
              "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
              "size": zip_path.stat().st_size,
              "voices": [{k: v for k, v in voice_json(project).items() if k in ("name", "artist", "accent", "description")}]}
+    if has_logo:
+        entry["logo"] = f"https://github.com/{PACKS_REPO}/releases/download/{tag}/{tag}.png"
     entry_path = zip_path.with_suffix(".catalog.json")
     entry_path.write_text(json.dumps(entry, indent=2), encoding="utf-8")
     return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"], "tag": tag}
