@@ -20,7 +20,7 @@ from pathlib import Path
 import fcac_audio
 
 DEFAULT_TARGET = -18.9     # LUFS every clip is set to (tested in the sim against the original Fenix announcements)
-EFFECT_VERSION = 2         # bump when the PA sound changes: projects are re-processed once when opened
+EFFECT_VERSION = 3         # bump when the PA sound changes: projects are re-processed once when opened
 MAX_UPLOAD = 60 * 1024 * 1024
 AUDIO_EXT = {".wav", ".ogg", ".mp3", ".m4a", ".flac", ".webm", ".opus", ".aac"}
 AIRPORT = re.compile(r"^[A-Z0-9]{4}(_[A-Z0-9]{1,8})?$")
