@@ -585,7 +585,36 @@ def load_catalog(cfg: dict) -> list[dict]:
     return sorted(packs, key=lambda p: p["icao"])
 
 
-def resolve_pack_url(url: str, icao: str) -> str:
+def pack_identity(zip_path: Path, filename: str = "") -> tuple[str, str]:
+    """Which airline a pack zip is for: (ICAO, name), read from the voice.json inside it (its "icao" and "airline"),
+    else from the file name (EZY.zip, EZY_pack.zip)."""
+    data: dict = {}
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            names = {n.replace("\\", "/"): n for n in archive.namelist()}
+            for key in ("voice.json", *sorted(k for k in names if k.endswith("/voice.json") and k.count("/") <= 2)):
+                if key in names:
+                    try:
+                        found = json.loads(archive.read(names[key]).decode("utf-8-sig"))
+                    except (ValueError, KeyError):
+                        continue
+                    if isinstance(found, dict) and str(found.get("icao", "")).strip():
+                        data = found
+                        break
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise AppError(f"That is not a readable pack zip: {exc}") from exc
+    code = str(data.get("icao", "")).strip().upper()
+    if not code:
+        stem = Path(filename.replace("\\", "/")).name
+        stem = stem[:-4] if stem.lower().endswith(".zip") else stem
+        match = re.match(r"^([A-Za-z0-9]{3})(?:[_\-. ].*)?$", stem)
+        code = match[1].upper() if match else ""
+    if not re.fullmatch(r"[A-Z0-9]{3}", code):
+        raise AppError("This pack does not say which airline it is. Its voice.json needs an \"icao\" entry, like \"icao\": \"BAW\".")
+    return code, str(data.get("airline", "")).strip()[:80]
+
+
+def resolve_pack_url(url: str, icao: str = "") -> str:
     """A link the user pasted -> a direct .zip link. Accepts a direct .zip, a GitHub file page, or a GitHub repository /
     releases page (the zip attached to that release, else the latest one)."""
     url = url.strip()
@@ -611,7 +640,8 @@ def resolve_pack_url(url: str, icao: str) -> str:
     assets = [a for a in resp.json().get("assets", []) if str(a.get("name", "")).lower().endswith(".zip")]
     if not assets:
         raise AppError("That GitHub release has no .zip file attached.")
-    assets.sort(key=lambda a: not str(a["name"]).upper().startswith(icao.upper()))
+    if icao:
+        assets.sort(key=lambda a: not str(a["name"]).upper().startswith(icao.upper()))
     return str(assets[0]["browser_download_url"])
 
 
@@ -1655,23 +1685,43 @@ class UIMixin:
             fenix = ""
         return {"fenix": fenix, "originals": str(GENERIC_DIR), "recordings": str(airlines_root(cfg))}
 
-    def import_stage_path(self, icao: str) -> Path:
+    def import_download(self, zip_url: str) -> None:
+        """Download a pack from a link, then install it. A card called 'Importing a pack' shows the progress until we know the airline."""
+        key = "IMPORT"
+        if key in self.tasks:
+            return
+        task = {"kind": "install", "text": "Starting download", "frac": 0.0, "name": "Importing a pack"}
+        self.tasks[key] = task
+        path = self.import_stage_path()
+        try:
+            def progress(done: int, total: int) -> None:
+                task["text"], task["frac"] = f"Downloading  {done / 1e6:.0f} of {total / 1e6:.0f} MB", 0.8 * done / total
+            download_pack({"url": zip_url, "sha256": ""}, path, progress)
+            icao, name = pack_identity(path, zip_url.split("?")[0].rsplit("/", 1)[-1])
+        except AppError as exc:
+            path.unlink(missing_ok=True)
+            self.tasks.pop(key, None)
+            self.set_status(str(exc), notify=True)
+            return
+        self.tasks.pop(key, None)
+        self.start_pack_task("install", icao, {"icao": icao, "name": name or airline_display_name(load_config(), icao),
+                                               "version": "imported", "url": str(path), "sha256": "", "size": 0, "cleanup": str(path)})
+
+    def import_stage_path(self) -> Path:
         folder = DATA_DIR / "imports"
         folder.mkdir(parents=True, exist_ok=True)
-        return folder / f"{check_airline_code(icao)}.zip"
+        return folder / f"import-{int(time.time() * 1000)}.zip"
 
-    def import_local(self, icao: str, name: str, path: Path) -> dict:
-        """A pack zip from this computer, already copied to `path`: install it like a catalog pack."""
+    def import_local(self, path: Path, filename: str = "") -> dict:
+        """A pack zip already on disk at `path`: read which airline it is for and install it like a catalog pack."""
         try:
-            icao = check_airline_code(icao)
-            if not zipfile.is_zipfile(path):
-                path.unlink(missing_ok=True)
-                return {"error": "That is not a zip file."}
+            icao, name = pack_identity(path, filename)
         except AppError as exc:
+            path.unlink(missing_ok=True)
             return {"error": str(exc)}
-        self.start_pack_task("install", icao, {"icao": icao, "name": name.strip()[:80] or icao, "version": "imported",
-                                               "url": str(path), "sha256": "", "size": 0, "cleanup": str(path)})
-        return {"ok": True}
+        self.start_pack_task("install", icao, {"icao": icao, "name": name or airline_display_name(load_config(), icao),
+                                               "version": "imported", "url": str(path), "sha256": "", "size": 0, "cleanup": str(path)})
+        return {"ok": True, "icao": icao}
 
     def ui_logo(self, icao: str) -> tuple[bytes, str]:
         try:
@@ -1723,12 +1773,10 @@ class UIMixin:
             self.start_pack_task("install", entry["icao"], entry)
         elif name == "import_url":
             try:
-                icao = check_airline_code(str(data.get("icao", "")))
-                zip_url = resolve_pack_url(str(data.get("url", "")), icao)
+                zip_url = resolve_pack_url(str(data.get("url", "")))
             except AppError as exc:
                 return {"error": str(exc)}
-            self.start_pack_task("install", icao, {"icao": icao, "name": str(data.get("name", "")).strip()[:80] or icao,
-                                                   "version": "imported", "url": zip_url, "sha256": "", "size": 0})
+            threading.Thread(target=self.import_download, args=(zip_url,), daemon=True).start()
         elif name == "remove_voice":
             try:
                 message = remove_voice(load_config(), str(data.get("icao", "")), str(data.get("voice", "")))

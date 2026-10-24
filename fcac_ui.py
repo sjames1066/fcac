@@ -210,7 +210,7 @@ class UIServer:
                             self._json(413, {"error": "That file is empty or larger than 1 GB."})
                             return
                         try:
-                            dest = server.backend.import_stage_path(q.get("icao", [""])[0])
+                            dest = server.backend.import_stage_path()
                         except Exception as exc:
                             self.close_connection = True
                             self._json(400, {"error": str(exc)})
@@ -223,7 +223,7 @@ class UIServer:
                                     break
                                 out.write(chunk)
                                 left -= len(chunk)
-                        self._json(200, server.backend.import_local(q.get("icao", [""])[0], q.get("name", [""])[0], dest))
+                        self._json(200, server.backend.import_local(dest, q.get("file", [""])[0]))
                         return
                     if path == "/studio/upload":  # raw audio bytes; details in the query string
                         q = parse_qs(parsed.query)
@@ -571,10 +571,6 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <input type="text" id="i-url" placeholder="https://github.com/name/repo/releases/tag/baw-1.0.0 or a link to a .zip" autocomplete="off" spellcheck="false">
   <div class="small" style="margin:12px 0 6px;font-weight:600;color:var(--text)">Or from this computer</div>
   <div style="display:flex;gap:10px;align-items:center"><button id="i-pick">Choose a .zip file...</button><span class="small" id="i-file">No file chosen</span><input type="file" id="i-input" accept=".zip,application/zip" style="display:none"></div>
-  <div style="display:flex;gap:12px;margin-top:16px">
-    <div style="width:130px"><label class="small" for="i-icao" style="display:block;margin-bottom:6px">Airline code</label><input type="text" id="i-icao" maxlength="3" placeholder="BAW" style="text-transform:uppercase" autocomplete="off"></div>
-    <div style="flex:1"><label class="small" for="i-name" style="display:block;margin-bottom:6px">Airline name (optional)</label><input type="text" id="i-name" placeholder="British Airways" autocomplete="off"></div>
-  </div>
   <div class="small" id="i-msg" style="margin-top:12px;color:var(--err);min-height:16px"></div>
   <div class="row" style="margin-top:10px"><button class="ghost" id="i-cancel">Cancel</button><button class="primary" id="i-ok">Import</button></div>
 </div></div>
@@ -792,23 +788,20 @@ $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
 $("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
   const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
 let importFile=null;
-function guessCode(text){const m=(text||"").split(/[\\/]/).pop().match(/^([A-Za-z0-9]{3})(?:[_\-. ]|$)/);return m?m[1].toUpperCase():""}
-$("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-icao").value="";$("#i-name").value="";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
+$("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
 $("#i-cancel").onclick=()=>$("#m-import").classList.remove("show");
 $("#i-pick").onclick=()=>$("#i-input").click();
-$("#i-input").onchange=()=>{const f=$("#i-input").files[0];importFile=f||null;$("#i-file").textContent=f?f.name+" ("+Math.round(f.size/1048576)+" MB)":"No file chosen";if(f){$("#i-url").value="";if(!$("#i-icao").value)$("#i-icao").value=guessCode(f.name)}};
-$("#i-url").oninput=()=>{if($("#i-url").value){importFile=null;$("#i-input").value="";$("#i-file").textContent="No file chosen"}if(!$("#i-icao").value||$("#i-icao").dataset.auto)$("#i-icao").value=guessCode($("#i-url").value.split("?")[0]),$("#i-icao").dataset.auto="1"};
-$("#i-icao").oninput=()=>{$("#i-icao").dataset.auto=""};
+$("#i-input").onchange=()=>{const f=$("#i-input").files[0];importFile=f||null;$("#i-file").textContent=f?f.name+" ("+Math.round(f.size/1048576)+" MB)":"No file chosen";if(f)$("#i-url").value=""};
+$("#i-url").oninput=()=>{if($("#i-url").value){importFile=null;$("#i-input").value="";$("#i-file").textContent="No file chosen"}};
 $("#i-ok").onclick=async()=>{
-  const msg=$("#i-msg"),icao=$("#i-icao").value.trim().toUpperCase(),name=$("#i-name").value.trim(),url=$("#i-url").value.trim();msg.textContent="";
+  const msg=$("#i-msg"),url=$("#i-url").value.trim();msg.textContent="";
   if(!importFile&&!url){msg.textContent="Paste a link or choose a zip file.";return}
-  if(!/^[A-Z0-9]{3}$/.test(icao)){msg.textContent="Enter the airline's 3-letter code, like BAW.";$("#i-icao").focus();return}
   $("#i-ok").disabled=true;$("#i-ok").textContent="Importing...";
   try{
     let r;
-    if(importFile){const q=new URLSearchParams({icao,name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
-    else r=await api("import_url",{icao,name,url});
-    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing "+icao+" - watch its card for progress",5000)}
+    if(importFile){const q=new URLSearchParams({file:importFile.name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
+    else r=await api("import_url",{url});
+    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Download Packs tab for progress",5000);setView("dl")}
   }catch(e){msg.textContent="Import failed - could not send the file."}
   $("#i-ok").disabled=false;$("#i-ok").textContent="Import";
 };
