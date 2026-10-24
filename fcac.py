@@ -1035,6 +1035,10 @@ def list_voices(lib_dir: Path) -> dict[str, Path]:
         for path in sorted(root.iterdir(), key=lambda p: p.name.lower()):
             if path.is_dir() and any(path.rglob("*.ogg")):
                 voices[path.name] = path
+    if DEFAULT_VOICE in voices and len(voices) > 1:  # the same voice both in the airline folder and in voices\<Name> (an imported pack
+        names = {voice_info(p, k)["name"].strip().lower() for k, p in voices.items() if k != DEFAULT_VOICE}  # beside a Studio copy)
+        if voice_info(lib_dir, DEFAULT_VOICE)["name"].strip().lower() in names:
+            del voices[DEFAULT_VOICE]
     return voices
 
 
