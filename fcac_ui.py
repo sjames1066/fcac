@@ -599,9 +599,6 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
       <div class="radio" data-v="yes"><b>Hide it in the tray</b><span>It leaves the taskbar; double-click the tray icon to bring it back</span></div>
     </div></div>
-  <div class="setting"><div class="label">Fenix packs folder and log</div>
-    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where FCAC puts your announcements for the Fenix.</span></div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
   <div class="setting"><div class="label">Local time in the landing announcement</div>
     <div class="radios" id="s-time">
       <div class="radio" data-v="yes"><b>Say the local time</b><span>"&hellip;where the local time is four thirty-five", read from the sim once you have landed</span></div>
@@ -621,6 +618,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <label class="check" id="s-quit-row" style="margin:12px 0 0"><input type="checkbox" id="s-quit"> Close FCAC when MSFS closes</label>
   </div>
+  <div class="setting"><div class="label">Fenix packs folder and log</div>
+    <div style="display:flex;align-items:center;gap:12px"><button class="ghost" data-open="fenix">Open folder</button><span class="small">Where FCAC puts your announcements for the Fenix.</span></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button class="ghost" data-open="log">View log</button><span class="small">Useful if something is not working.</span></div></div>
   <div class="row"><button class="ghost" id="s-cancel">Cancel</button><button class="primary" id="s-save">Save</button></div>
 </div></div>
 
