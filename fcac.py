@@ -825,8 +825,8 @@ def library_voice_items(cfg: dict, icao: str) -> list[dict]:
     try:
         folder = airline_folder(cfg, icao)
         found = list_voices(folder)
-        if DEFAULT_VOICE not in found and has_ogg(folder / MAIN_FOLDER):
-            found = {DEFAULT_VOICE: folder, **found}
+        if not found and has_ogg(folder / MAIN_FOLDER):  # an airline with only general PAs
+            found = {DEFAULT_VOICE: folder}
         return [{"key": key, "name": voice_info(path, key)["name"]} for key, path in found.items()]
     except (OSError, AppError):
         return []
