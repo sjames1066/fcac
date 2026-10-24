@@ -1896,8 +1896,8 @@ class UIMixin:
     def studio_voices(self, folder: Path) -> dict[str, Path]:
         """Voices that can be opened for editing: the usual ones, plus an airline folder that only has general PAs."""
         found = list_voices(folder)
-        if DEFAULT_VOICE not in found and has_ogg(folder / MAIN_FOLDER):
-            found = {DEFAULT_VOICE: folder, **found}
+        if not found and has_ogg(folder / MAIN_FOLDER):
+            found = {DEFAULT_VOICE: folder}
         return found
 
     def studio_snapshot(self, cfg: dict) -> dict:
