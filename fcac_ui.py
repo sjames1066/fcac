@@ -672,14 +672,13 @@ function renderHero(){
     }
     const cur=v.options.find(o=>o.id===(v.selected==="random"||v.options.length===1?(v.selected==="random"?v.used:v.options[0].id):v.selected))||(v.options.length===1?v.options[0]:null);
     if(v.selected==="random"&&cur) side.append(el("span","small","This flight: "+cur.name));
-    if(cur&&(cur.artist||cur.accent||cur.description)){
-      const line=el("span","small credit"); line.title=cur.description||"";
+    if(cur&&(cur.artist||cur.accent)){
+      const line=el("span","small credit");
       const who=[cur.artist?"voiced by "+cur.artist:"",cur.accent].filter(Boolean).join(" · ");
       line.append(document.createTextNode(who.charAt(0).toUpperCase()+who.slice(1)));
       if(cur.credit_url){const a=el("a",null," ↗"); a.href=cur.credit_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       if(cur.donate_url){const a=el("a",null," · ♥ Support"); a.href=cur.donate_url; a.target="_blank"; a.rel="noopener"; line.append(a)}
       side.append(line);
-      if(cur.description) side.append(el("span","small desc",cur.description));
     }
   } else side.append(b);
   if(snap.updated) side.append(el("span","small","Last applied "+snap.updated));
