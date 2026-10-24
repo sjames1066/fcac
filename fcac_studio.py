@@ -266,7 +266,7 @@ def slot_list(project: dict) -> list[dict]:
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
-            f"Just the airport's name: '{name or 'London Heathrow'}'. FCAC puts it into both the welcome aboard and the landing PA.", required=False)
+            "Say airport name", required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     for name in project.get("music", []):
