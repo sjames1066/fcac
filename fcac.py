@@ -1256,6 +1256,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"))
     state = load_state()
     state["last"] = key
+    state["applied"] = APPLIED_MARK in message
     state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     save_state(state)
     return True, message
@@ -1492,8 +1493,8 @@ class UIMixin:
             "setup_needed": not (str(cfg.get("simbrief_username", "")).strip() or str(cfg.get("simbrief_userid", "")).strip()),
             "username": cfg.get("simbrief_username", ""),
             "flight": state.get("flight"),
-            "message": self.status.replace(APPLIED_MARK, "") if APPLIED_MARK not in self.status else "",
-            "applied": APPLIED_MARK in self.status,
+            "message": "" if self._quiet_status(state) else self.status.replace(APPLIED_MARK, "") if APPLIED_MARK not in self.status else "",
+            "applied": APPLIED_MARK in self.status or (self._quiet_status(state) and bool(state.get("applied"))),
             "updated": state.get("updated", ""),
             "auto": self.auto,
             "busy": self.lock.locked() or bool(self.tasks),
@@ -1502,6 +1503,10 @@ class UIMixin:
             "logo_v": self.logo_version,
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
+
+    def _quiet_status(self, state: dict) -> bool:
+        """Routine 'nothing to do' statuses are not worth showing: the card's colour already says it."""
+        return self.status.startswith("Unchanged:") or "landing PA built from the sim" in self.status
 
     def _welcome_info(self, cfg: dict, state: dict) -> dict | None:
         """First run only: what FCAC is going to change, so the user isn't surprised."""
