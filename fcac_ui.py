@@ -694,7 +694,8 @@ function renderHero(){
   if(snap.message){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   h.append(mid);
   const side=el("div","side");
-  const b=el("button","primary","Update now"); b.disabled=snap.busy; b.onclick=()=>api("update");
+  const b=el("button","primary","Update now"); b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
+  if(!snap.voices&&f&&f.airline) b.title="No voices for "+f.airline+" yet - install or import its airline pack first";
   const v=snap.voices;
   if(v){
     {
