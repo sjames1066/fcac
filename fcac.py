@@ -2320,7 +2320,7 @@ class TrayApp(UIMixin):
         item, menu = self.pystray.MenuItem, self.pystray.Menu
         return menu(
             item("Open FCAC window", self.open_window, default=True),
-            item(lambda _: self.status, None, enabled=False),
+            item(lambda _: self.status_text(), None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
             item("Auto-update", self.toggle_auto, checked=lambda _: self.auto),
@@ -2464,11 +2464,31 @@ class TrayApp(UIMixin):
         self.icon.stop()
 
     # status -------------------------------------------------------------
+    def status_text(self) -> str:
+        """The status line, with "Unchanged: X to Y" shown as when it was last updated ("... - last updated 3 minutes ago")."""
+        text = self.status
+        if text.startswith("Unchanged: "):
+            try:
+                then = time.mktime(time.strptime(load_state().get("updated", ""), "%Y-%m-%d %H:%M:%S"))
+                seconds = max(0, int(time.time() - then))
+            except (ValueError, OverflowError):
+                return text[11:]
+            if seconds < 5:
+                ago = "just now"
+            else:
+                for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute"), (1, "second")):
+                    if seconds >= size:
+                        n = seconds // size
+                        ago = f"{n} {unit}{'' if n == 1 else 's'} ago"
+                        break
+            return f"{text[11:]} - last updated {ago}"[:120]
+        return text
+
     def set_status(self, text: str, notify: bool = False) -> None:
         self.status = text[:120]
         log.info(text)
         try:
-            self.icon.title = f"{APP_NAME}: {self.status}"[:127]
+            self.icon.title = f"{APP_NAME}: {self.status_text()}"[:127]
             self.icon.update_menu()
             if notify:
                 self.icon.notify(text if len(text) <= 250 else text[:247] + "...", APP_NAME)
