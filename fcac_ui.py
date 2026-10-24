@@ -611,11 +611,6 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <h3>Settings</h3><p>How FCAC behaves. Changes apply when you press Save.</p>
   <div class="setting"><div class="label">SimBrief username</div>
     <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
-  <div class="setting"><div class="label">When I close this window</div>
-    <div class="radios" id="s-close">
-      <div class="radio" data-v="tray"><b>Keep running in the tray</b><span>FCAC keeps your announcements up to date in the background</span></div>
-      <div class="radio" data-v="quit"><b>Quit FCAC</b><span>Closing the window exits the app completely</span></div>
-    </div></div>
   <div class="setting"><div class="label">When I minimize this window</div>
     <div class="radios" id="s-min">
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
@@ -885,9 +880,9 @@ function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
   cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:s.on_close||"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance)};
+  const s=snap.settings||{}; cfg={on_close:"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance)};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-close",cfg.on_close); pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   $("#m-settings").classList.add("show");
 }

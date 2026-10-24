@@ -1815,22 +1815,8 @@ class UIMixin:
             self.set_status("FCAC is in the tray - double-click the icon to open the window")
 
     def window_closed(self) -> None:
-        """If 'quit when I close the window' is on, quit after a short grace period (a page reload is not a close)."""
-        try:
-            if load_config().get("on_close") != "quit":
-                return
-        except AppError:
-            return
-        closed_at = time.monotonic()
-
-        def later() -> None:
-            time.sleep(4)
-            if self.ui.last_poll > closed_at or self.tasks or self.lock.locked():
-                return  # the window came back, or something is installing
-            log.info("Window closed - quitting as chosen in Settings")
-            self.quit()
-
-        threading.Thread(target=later, daemon=True).start()
+        """Closing the window never quits FCAC: it keeps running in the tray (it has to, to build the landing announcement)."""
+        self.set_status("FCAC is in the tray - double-click the icon to open the window")
 
     # things the page can ask for
     def ui_action(self, name: str, data: dict) -> dict:
