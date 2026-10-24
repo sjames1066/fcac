@@ -571,7 +571,7 @@ def upgrade_names(root: Path, project: dict) -> int:
 
 # --------------------------------------------------------------------------- export
 def voice_json(project: dict) -> dict:
-    data = {"name": project["voice"], "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
+    data = {"airline": project.get("airline", ""), "name": project["voice"], "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
             "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
             "description": project.get("description", "")}
     return {k: v for k, v in data.items() if v}

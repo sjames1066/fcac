@@ -720,15 +720,16 @@ function packCard(p){
   const c=el("div","card pack"); c.id="pack-"+p.icao;
   const top=el("div","top"); top.append(logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
-  if(p.installed){const ch=el("span","chip "+(p.update?"up":"ok"),p.update?"Update available":"Installed");n.append(ch)}
+  if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
   info.append(n);
-  info.append(el("div","meta",[p.icao,p.version?(p.version==="imported"?"Imported":/^[0-9]/.test(p.version)?"v"+p.version:p.version):"",p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
-  if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?p.voices.length+" voices: ":"Voice: ")+p.voices.join(", ")));
+  const ver=p.version&&p.version!=="imported"&&p.version!=="Your recordings"?(/^[0-9]/.test(p.version)?"v"+p.version:p.version):"";
+  info.append(el("div","meta",[p.icao,ver,p.size_mb?p.size_mb+" MB":""].filter(Boolean).join("  ·  ")));
+  if(p.voices&&p.voices.length) info.append(el("div","meta",(p.voices.length>1?"Voices: ":"Voice: ")+p.voices.join(", ")));
   top.append(info);
   const act=el("div","act");
   if(!p.task){
     if(!p.installed||p.update){const b=el("button","primary",p.update?"Update":"Install");b.disabled=snap.busy;b.onclick=()=>api("install",{icao:p.icao});act.append(b)}
-    if(p.installed&&p.version!=="Your recordings"){const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm("Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
+    if(p.installed){const own=p.version==="Your recordings";const b=el("button","danger","Uninstall");b.disabled=snap.busy;b.onclick=()=>{if(confirm(own?"Remove the "+p.name+" pack?\nThis takes your "+p.icao+" recordings out of FCAC (a copy is kept in the FCAC backups folder).":"Uninstall the "+p.name+" pack?\nYour own recordings stay."))api("uninstall",{icao:p.icao})};act.append(b)}
   }
   if(p.task){
     const live=el("div","live");

@@ -780,13 +780,73 @@ def install_pack(cfg: dict, entry: dict, progress=None) -> str:
     return f"Installed {icao} - {entry.get('name', icao)}{version}{note}"
 
 
+AIRLINE_NAMES = {
+    "EZY": "easyJet", "BAW": "British Airways", "RYR": "Ryanair", "DLH": "Lufthansa", "AFR": "Air France", "KLM": "KLM",
+    "UAE": "Emirates", "QTR": "Qatar Airways", "ETD": "Etihad Airways", "THY": "Turkish Airlines", "SAS": "Scandinavian Airlines",
+    "VIR": "Virgin Atlantic", "TOM": "TUI Airways", "TUI": "TUI fly", "WZZ": "Wizz Air", "VLG": "Vueling", "IBE": "Iberia",
+    "SWR": "Swiss", "AUA": "Austrian", "BEL": "Brussels Airlines", "FIN": "Finnair", "ICE": "Icelandair", "EIN": "Aer Lingus",
+    "NAX": "Norwegian", "NOZ": "Norwegian", "TAP": "TAP Air Portugal", "AEE": "Aegean Airlines", "LOT": "LOT Polish Airlines",
+    "AAL": "American Airlines", "DAL": "Delta Air Lines", "UAL": "United Airlines", "SWA": "Southwest Airlines", "JBU": "JetBlue",
+    "ASA": "Alaska Airlines", "ACA": "Air Canada", "WJA": "WestJet", "QFA": "Qantas", "ANZ": "Air New Zealand", "SIA": "Singapore Airlines",
+    "CPA": "Cathay Pacific", "JAL": "Japan Airlines", "ANA": "All Nippon Airways", "KAL": "Korean Air", "THA": "Thai Airways",
+    "EVA": "EVA Air", "CCA": "Air China", "CES": "China Eastern", "CSN": "China Southern", "ETH": "Ethiopian Airlines",
+    "SAA": "South African Airways", "MSR": "EgyptAir", "SVA": "Saudia", "GIA": "Garuda Indonesia", "AIC": "Air India", "VOZ": "Virgin Australia",
+    "SHT": "BA Shuttle", "EXS": "Jet2", "JET": "Jet2", "LOG": "Loganair", "EJU": "easyJet Europe", "BCS": "European Air Transport",
+}
+
+
+def airline_display_name(cfg: dict, icao: str, record: dict | None = None, catalog_name: str = "") -> str:
+    """Best name for an airline folder: what the pack said, then a voice.json, a Pack Studio project, a known airline."""
+    for name in (catalog_name, (record or {}).get("name", "")):
+        if name and name.upper() != icao.upper():
+            return name
+    try:
+        folder = airline_folder(cfg, icao)
+        for path in [folder / "voice.json", *sorted(folder.glob("voices/*/voice.json"))]:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, dict) and str(data.get("airline", "")).strip().upper() not in ("", icao.upper()):
+                return str(data["airline"]).strip()
+    except OSError:
+        pass
+    try:
+        for proj in fcac_studio.list_projects(STUDIO_DIR):
+            if str(proj.get("icao", "")).upper() == icao.upper() and str(proj.get("airline", "")).strip().upper() not in ("", icao.upper()):
+                return str(proj["airline"])
+    except Exception:
+        pass
+    return AIRLINE_NAMES.get(icao.upper(), icao.upper())
+
+
+def library_voices(cfg: dict, icao: str) -> list[str]:
+    try:
+        found = list_voices(airline_folder(cfg, icao))
+        return [voice_info(path, key)["name"] for key, path in found.items() if key != DEFAULT_VOICE]
+    except (OSError, AppError):
+        return []
+
+
 def uninstall_pack(cfg: dict, icao: str) -> str:
     """Remove what install_pack added (your own recordings stay) and restore any pack that was there before."""
     icao = check_airline_code(icao)
     state = load_state()
     record = state.get("installed", {}).get(icao)
-    if not record:
-        raise AppError(f"The {icao} pack is not installed.")
+    if not record:  # recordings you made or copied in yourself: set the folder aside (in backups) rather than deleting it
+        lib_dir = airline_folder(cfg, icao)
+        if not lib_dir.is_dir():
+            raise AppError(f"The {icao} pack is not installed.")
+        try:
+            BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(lib_dir), str(BACKUPS_DIR / f"{icao}-recordings-{time.strftime('%Y%m%d-%H%M%S')}"))
+            shutil.rmtree(GENERIC_DIR / icao, ignore_errors=True)
+        except OSError as exc:
+            raise AppError(f"Could not remove {icao} (is MSFS using the files?): {exc}") from exc
+        state.pop("last", None)
+        save_state(state)
+        log.info("Removed library folder %s (kept in backups)", icao)
+        return f"Removed {icao} (a copy of the recordings is in the FCAC backups folder)"
     try:
         fenix_dir = airline_packs_dir(cfg) / icao
         if fenix_dir.exists():
@@ -1462,22 +1522,23 @@ class UIMixin:
             seen.add(entry["icao"])
             have = installed.get(entry["icao"])
             packs.append({
-                "icao": entry["icao"], "name": entry["name"], "version": entry["version"],
-                "voices": [v["name"] for v in entry.get("voices", [])],
+                "icao": entry["icao"], "name": airline_display_name(cfg, entry["icao"], have, entry["name"]), "version": entry["version"],
+                "voices": [v["name"] for v in entry.get("voices", [])] or library_voices(cfg, entry["icao"]),
                 "size_mb": round(entry["size"] / 1048576) if entry.get("size") else 0,
                 "installed": bool(have), "update": bool(have and have.get("version") != entry["version"]),
                 "task": self.tasks.get(entry["icao"]),
             })
         for icao, have in sorted(installed.items()):  # installed packs stay listed even if the catalog is down
             if icao not in seen:
-                packs.append({"icao": icao, "name": have.get("name", icao), "version": have.get("version", ""),
-                              "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
+                packs.append({"icao": icao, "name": airline_display_name(cfg, icao, have), "version": have.get("version", ""),
+                              "voices": library_voices(cfg, icao), "size_mb": 0, "installed": True, "update": False, "task": self.tasks.get(icao)})
         try:  # airline folders already in your library (made in Pack Studio, or copied in by hand) count as installed
             for folder in sorted(airlines_root(cfg).iterdir()):
                 code = folder.name.upper()
                 if folder.is_dir() and re.fullmatch(r"[A-Za-z0-9]{3}", folder.name) and code not in seen and code not in installed \
                         and any(folder.iterdir()):
-                    packs.append({"icao": code, "name": code, "version": "Your recordings", "size_mb": 0, "installed": True,
+                    packs.append({"icao": code, "name": airline_display_name(cfg, code), "version": "Your recordings",
+                                  "voices": library_voices(cfg, code), "size_mb": 0, "installed": True,
                                   "update": False, "task": self.tasks.get(code)})
                     seen.add(code)
         except OSError:
