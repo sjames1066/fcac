@@ -609,6 +609,8 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
         archive.writestr("voice.json", json.dumps(voice_json(project), indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
+        if project.get("scripts"):
+            archive.writestr("scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
     entry = {"icao": project["icao"], "name": project["airline"], "version": project.get("version", "1.0.0"),
              "url": zip_path.name, "sha256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
              "size": zip_path.stat().st_size,
@@ -672,6 +674,13 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
     for slot in slot_list(project):
         if (pack / slot["folder"] / slot["file"]).is_file():
             project["slots"][slot["id"]] = {"imported": True}
+    try:  # the scripts that were saved with the pack
+        scripts = json.loads((src / "scripts.json").read_text(encoding="utf-8-sig"))
+        if isinstance(scripts, dict):
+            known = {slot["id"] for slot in slot_list(project)}
+            project["scripts"] = {k: v[:4000] for k, v in scripts.items() if k in known and isinstance(v, str) and v.strip()}
+    except (OSError, ValueError):
+        pass
     project["origin"] = str(src)
     save(root, project)
     return project
@@ -697,6 +706,8 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
         for path in music:
             shutil.copyfile(path, airline_dir / "main" / path.name)
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
+    if project.get("scripts"):
+        (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
     if logo_path(root, project).is_file():   # the logo belongs to the airline, so it goes beside its folders
         airline_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(logo_path(root, project), airline_dir / "logo.png")

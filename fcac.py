@@ -681,7 +681,7 @@ def extract_pack(zip_path: Path, out_dir: Path) -> None:
         with zipfile.ZipFile(zip_path) as archive:
             for info in archive.infolist():
                 parts = [p for p in info.filename.replace("\\", "/").split("/") if p]
-                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts not in (["voice.json"], ["logo.png"])):
+                if info.is_dir() or not parts or (parts[0] not in ZIP_FOLDERS and parts not in (["voice.json"], ["logo.png"], ["scripts.json"])):
                     continue
                 if any(p == ".." or ":" in p for p in parts):
                     raise AppError("Pack zip contains an unsafe path - refusing to install it.")
