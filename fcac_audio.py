@@ -6,11 +6,14 @@ is on the PATH, so running FCAC from source still works.
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("fcac")
 
 try:
     import soundfile as sf
@@ -255,6 +258,8 @@ def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) 
         data = data * float(10 ** ((target_lufs - now) / 20))
     data = _fade(_limit(data), rate, 8)
     lufs_out = loudness_lufs(data, rate)
+    log.info("Processed %s: %.1f s, %s -> %s LUFS (target %s)", Path(dst).name, len(data) / rate, lufs_in and round(lufs_in, 1),
+             lufs_out and round(lufs_out, 1), target_lufs)
     Path(dst).parent.mkdir(parents=True, exist_ok=True)
     _write(Path(dst), data, rate)
     return {"seconds": round(len(data) / rate, 2),
