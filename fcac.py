@@ -48,7 +48,7 @@ except Exception:  # missing libraries must not stop the rest of the app
 import fcac_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports fcac_audio itself
 
 APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )
@@ -551,7 +551,11 @@ def _version_tuple(text: str) -> tuple:
 def app_update() -> dict | None:
     """The newer FCAC the catalog announces, if there is one."""
     if APP_LATEST and _version_tuple(APP_LATEST["version"]) > _version_tuple(VERSION):
-        return dict(APP_LATEST)
+        info = dict(APP_LATEST)
+        info["auto"] = bool(info.get("installer")) and bool(getattr(sys, "frozen", False))   # the installed program (not the Python source) can update itself
+        info.pop("installer", None)
+        info.pop("sha256", None)
+        return info
     return None
 
 
@@ -574,8 +578,13 @@ def load_catalog(cfg: dict) -> list[dict]:
     APP_LATEST.clear()
     if isinstance(app, dict) and str(app.get("version", "")).strip():
         link = str(app.get("url", "")).strip()
+        installer = str(app.get("installer", "")).strip()
+        digest = str(app.get("sha256", "")).strip().lower()
+        # only a GitHub download with a checksum can be installed automatically; anything else falls back to the release page
+        auto = bool(re.match(r"https://github\.com/[^/]+/[^/]+/releases/download/[^?#]+\.exe$", installer)) and bool(re.fullmatch(r"[0-9a-f]{64}", digest))
         APP_LATEST.update({"version": str(app["version"]).strip()[:20], "url": link if _is_http(link) else "",
-                           "notes": str(app.get("notes", "")).strip()[:200]})
+                           "notes": str(app.get("notes", "")).strip()[:200],
+                           "installer": installer if auto else "", "sha256": digest if auto else ""})
     packs = []
     for entry in data.get("packs", []):
         icao = str(entry.get("icao", "")).strip().upper()
@@ -1616,6 +1625,7 @@ class UIMixin:
         self.tasks: dict[str, dict] = {}
         self.prompt: dict | None = None
         self.logo_version = 0
+        self.updating = False
         self.ui = fcac_ui.UIServer(self, DATA_DIR / "ui-profile")
 
     def open_window(self) -> None:
@@ -2228,7 +2238,9 @@ class UIMixin:
                 import webbrowser
 
                 latest = app_update()
-                if latest and latest.get("url"):
+                if latest and latest.get("auto"):
+                    threading.Thread(target=self.install_app_update, daemon=True).start()
+                elif latest and latest.get("url"):
                     webbrowser.open(latest["url"])
                 return
             elif what == "kofi":
@@ -2461,6 +2473,40 @@ class TrayApp(UIMixin):
     def toggle_auto(self) -> None:
         self.auto = not self.auto
         self.wake.set()
+
+    def install_app_update(self) -> None:
+        """Download the new installer, check its checksum, run it silently (it closes FCAC, updates it and starts it again)."""
+        if self.updating:
+            return
+        wanted = dict(APP_LATEST)
+        if not (wanted.get("installer") and wanted.get("sha256")) or _version_tuple(wanted["version"]) <= _version_tuple(VERSION):
+            return
+        self.updating = True
+        folder = Path(tempfile.mkdtemp(prefix="fcac-update-"))
+        setup = folder / f"FCAC-Setup-{wanted['version']}.exe"
+        try:
+            self.set_status(f"Downloading FCAC {wanted['version']} ...")
+            last = [0.0]
+
+            def progress(done: int, total: int) -> None:
+                if time.time() - last[0] > 1:
+                    last[0] = time.time()
+                    self.set_status(f"Downloading FCAC {wanted['version']} ... {done * 100 // total}%")
+
+            download_pack({"url": wanted["installer"], "sha256": wanted["sha256"]}, setup, progress)
+            if setup.stat().st_size < 1_000_000:
+                raise AppError("The downloaded update looks too small - not installing it.")
+            self.set_status(f"Installing FCAC {wanted['version']} - FCAC will restart in a moment")
+            time.sleep(1.5)
+            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            subprocess.Popen([str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
+                             creationflags=flags, close_fds=True)
+            self.quit()
+        except (AppError, OSError) as exc:
+            log.error("App update failed: %s", exc)
+            self.set_status(f"Could not update FCAC automatically: {exc}", notify=True)
+            shutil.rmtree(folder, ignore_errors=True)
+            self.updating = False
 
     def quit(self) -> None:
         self.stop.set()

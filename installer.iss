@@ -43,7 +43,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
   ValueData: """{app}\FCAC.exe"" --background"; Flags: uninsdeletevalue; Tasks: startwin
 
 [Run]
-Filename: "{app}\FCAC.exe"; Description: "Start FCAC now"; Flags: nowait postinstall skipifsilent
+; no skipifsilent: after an automatic update FCAC starts again by itself
+Filename: "{app}\FCAC.exe"; Description: "Start FCAC now"; Flags: nowait postinstall
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM FCAC.exe"; Flags: runhidden; RunOnceId: "StopFCAC"

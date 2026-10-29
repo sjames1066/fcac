@@ -23,6 +23,9 @@ echo Building the installer ...
 if errorlevel 1 goto failed
 echo.
 echo Done. Your installer is  %~dp0dist\FCAC-Setup-%FCACVER%.exe
+echo.
+echo For automatic updates, put this in catalog.json under "app" as  "sha256":
+certutil -hashfile "%~dp0dist\FCAC-Setup-%FCACVER%.exe" SHA256 | findstr /v ":"
 start "" "%~dp0dist"
 pause
 exit /b 0

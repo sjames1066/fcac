@@ -271,6 +271,32 @@ and settings (`%LOCALAPPDATA%\FCAC`) are kept when you uninstall or update.
 Windows may still warn about an unknown publisher until the installer is code-signed. If your antivirus flags a build,
 report it as a false positive to the vendor (Microsoft: https://www.microsoft.com/wdsi/filesubmission).
 
+### Automatic updates
+
+FCAC checks `catalog.json` every time it starts. When the `app` block names a newer version, a banner appears with
+**Update now**. For the installed program, that downloads the installer from your GitHub release, checks its SHA-256,
+runs it silently and FCAC restarts by itself (your settings and packs are untouched). Running FCAC from Python source
+(`Start FCAC.bat`) only shows a **Download** button that opens the release page.
+
+To publish an update:
+
+1. Raise `VERSION` in `fcac.py`, run **Build EXE.bat**, and note the SHA-256 it prints at the end.
+2. Create the GitHub release `v<version>` and attach `FCAC-Setup-<version>.exe`.
+3. Edit `catalog.json`, last, once the release is live:
+
+```json
+"app": {
+  "version": "1.0.4",
+  "url": "https://github.com/sjames1066/fcac/releases/latest",
+  "notes": "What changed, in one line",
+  "installer": "https://github.com/sjames1066/fcac/releases/download/v1.0.4/FCAC-Setup-1.0.4.exe",
+  "sha256": "<the 64-character checksum from step 1>"
+}
+```
+
+Without `installer` and `sha256` the banner just links to the release page. Re-uploading the installer changes its
+checksum, so update `sha256` whenever you do.
+
 `fcac.ico` gives the program and its shortcuts the FCAC icon. The tray icon is drawn by `fcac_icon.py`, which is bundled
 automatically; run `python fcac_icon.py` to re-export `fcac.ico` and `fcac_icon.png` if you change the design.
 

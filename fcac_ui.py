@@ -689,8 +689,8 @@ function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".p
 
 let heroSig="", keepClosed=false;
 function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.style.display="none";return}
-  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent=(a.notes?a.notes+" - ":"")+"You have "+(snap.version||"an older version")+".";}
-$("#upd-go").onclick=()=>api("open",{what:"update"});
+  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent=(a.notes?a.notes+" - ":"")+"You have "+(snap.version||"an older version")+".";$("#upd-go").textContent=a.auto?"Update now":"Download"}
+$("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - FCAC will restart by itself",6000)}api("open",{what:"update"})};
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
