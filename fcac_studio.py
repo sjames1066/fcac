@@ -407,6 +407,25 @@ def add_airport(root: Path, project: dict, code: str) -> None:
     save(root, project)
 
 
+def add_airports(root: Path, project: dict, text: str) -> tuple[list[str], list[str]]:
+    """Add every airport in a pasted list (separated by commas, semicolons, spaces or new lines).
+    Returns (added, skipped); codes that are not valid ICAO codes are skipped rather than failing the whole list."""
+    added: list[str] = []
+    skipped: list[str] = []
+    for raw in re.split(r"[,;\s]+", text.upper()):
+        code = raw.strip(".")
+        if not code:
+            continue
+        if not AIRPORT.match(code):
+            skipped.append(code)
+        elif code not in project["airports"] and code not in added:
+            added.append(code)
+    if added:
+        project["airports"] = sorted(project["airports"] + added)
+        save(root, project)
+    return added, skipped
+
+
 def remove_airport(root: Path, project: dict, code: str) -> None:
     project["airports"] = [c for c in project["airports"] if c != code]
     save(root, project)

@@ -486,7 +486,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .slot .act button.live{background:var(--err);color:#fff;border-color:transparent;min-width:112px;font-variant-numeric:tabular-nums}
 #view-studio{overflow-anchor:none}
 .addline{display:flex;gap:8px;margin:8px 0}
-.addline input{flex:1}
+.addline input,.addline textarea{flex:1;font:inherit}
 .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .sdbar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg,#0d0a1f) 30%);padding:18px 0 4px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .meter{height:14px;border-radius:99px;background:var(--surface2);overflow:hidden;position:relative;margin:8px 0 4px}
@@ -1136,10 +1136,10 @@ function renderStudio(){
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Airports"){
-      d.append(el("div","small","Add each airport and record just its name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
-      const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="EGLL";i.style.textTransform="uppercase";const add=el("button",null,"Add airport");
-      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok)openGroups.add("Airports");studioSig="";renderStudio()};
-      i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
+      const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
+      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
+      i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
       if(c.airports.length){const cr=el("div","chiprow");c.airports.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("airport",{...pid(c),code:a,remove:true});cr.append(b)});d.append(cr)}
     }
     if(gr.name==="Boarding music"){

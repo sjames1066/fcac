@@ -2166,7 +2166,15 @@ class UIMixin:
                 fcac_studio.save(STUDIO_DIR, project)
                 return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
             elif name == "airport":
-                (fcac_studio.remove_airport if data.get("remove") else fcac_studio.add_airport)(STUDIO_DIR, project, str(data.get("code", "")))
+                if data.get("remove"):
+                    fcac_studio.remove_airport(STUDIO_DIR, project, str(data.get("code", "")))
+                else:
+                    added, skipped = fcac_studio.add_airports(STUDIO_DIR, project, str(data.get("code", ""))[:5000])
+                    if not added and not skipped:
+                        return {"ok": True, "added": 0}
+                    if not added:
+                        return {"error": "Not an airport code: " + ", ".join(skipped[:8]) + ". Use 4-letter ICAO codes like EGLL, separated by commas, semicolons or spaces."}
+                    return {"ok": True, "added": len(added), "skipped": skipped}
             elif name == "music":
                 (fcac_studio.remove_music if data.get("remove") else fcac_studio.add_music)(STUDIO_DIR, project, str(data.get("name", "")))
             elif name == "extra":
