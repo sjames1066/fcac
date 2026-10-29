@@ -48,7 +48,7 @@ except Exception:  # missing libraries must not stop the rest of the app
 import fcac_studio  # Pack Studio (record / upload, PA sound, loudness, export); imports fcac_audio itself
 
 APP_NAME = "FCAC - Fenix Cabin Announcements Configurator"
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 BASE_DIR = (
     Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 )

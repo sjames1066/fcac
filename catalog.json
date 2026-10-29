@@ -1,8 +1,8 @@
 {
   "app": {
-    "version": "1.0.2",
+    "version": "1.0.3",
     "url": "https://github.com/sjames1066/fcac",
-    "notes": "Download Packs tab, Manage voices, import packs, new PA sound"
+    "notes": "Paste a list of airports in Pack Studio; installer and folder build"
   },
   "packs": [
     {
