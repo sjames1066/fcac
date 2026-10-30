@@ -280,9 +280,9 @@ runs it silently and FCAC restarts by itself (your settings and packs are untouc
 
 To publish an update:
 
-1. Raise `VERSION` in `fcac.py`, run **Build EXE.bat**, and note the SHA-256 it prints at the end.
+1. Raise `VERSION` in `fcac.py` and run **Build EXE.bat**. It also writes the new version, download link and SHA-256 into your local `catalog.json`.
 2. Create the GitHub release `v<version>` and attach `FCAC-Setup-<version>.exe`.
-3. Edit `catalog.json`, last, once the release is live:
+3. Last, once the release is live, upload that updated `catalog.json` to the repository. It looks like:
 
 ```json
 "app": {

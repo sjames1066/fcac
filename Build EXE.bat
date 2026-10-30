@@ -24,8 +24,11 @@ if errorlevel 1 goto failed
 echo.
 echo Done. Your installer is  %~dp0dist\FCAC-Setup-%FCACVER%.exe
 echo.
-echo For automatic updates, put this in catalog.json under "app" as  "sha256":
-certutil -hashfile "%~dp0dist\FCAC-Setup-%FCACVER%.exe" SHA256 | findstr /v ":"
+echo.
+"%PYEXE%" update_catalog.py %FCACVER% "%~dp0dist\FCAC-Setup-%FCACVER%.exe"
+echo.
+echo To publish: 1) create the GitHub release v%FCACVER% and attach the installer above,
+echo             2) then upload the updated catalog.json in this folder to the fcac repository on GitHub.
 start "" "%~dp0dist"
 pause
 exit /b 0
