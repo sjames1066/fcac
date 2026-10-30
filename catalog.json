@@ -1,28 +1,12 @@
 {
-  "app": {
-    "version": "1.0.3",
-    "url": "https://github.com/sjames1066/fcac",
-    "notes": "Paste a list of airports in Pack Studio; installer and folder build"
-  },
   "packs": [
     {
-      "id": "ezy-sam-james",
-      "icao": "EZY",
-      "name": "easyJet",
-      "voice": "Sam James",
+      "icao": "BAW",
+      "name": "British Airways",
       "version": "1.0.0",
-      "url": "https://github.com/sjames1066/fcac-packs/releases/download/ezy-sam-james-1.0.0/ezy-sam-james-1.0.0.zip",
-      "sha256": "42af03146c5b23829eb993eea2a7c57908dc36aa1afe5f03d1c156ddf9a0ffcf",
-      "size": 10110413,
-      "voices": [
-        {
-          "name": "Sam James",
-          "artist": "Sam James",
-          "accent": "British",
-          "description": "Test pack"
-        }
-      ],
-      "logo": "https://raw.githubusercontent.com/sjames1066/fcac/main/logos/ezy.png"
+      "url": "https://github.com/sjames1066/fcac/releases/download/baw-1.0.0/BAW.zip",
+      "sha256": "833f0da4ffd1d7583a1628e84adce761b5aecf552a0cbc7b3a432b9cfad51d2d",
+      "size": 444200839
     }
   ]
 }
