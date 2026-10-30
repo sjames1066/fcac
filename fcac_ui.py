@@ -343,10 +343,12 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .cog:hover svg{transform:rotate(45deg)}
 .cog svg{transition:transform .25s}
 .switch{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;cursor:pointer;user-select:none}
-.track{width:40px;height:23px;border-radius:99px;background:var(--surface2);border:1px solid var(--line2);position:relative;transition:.2s}
-.track::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#cfc9ea;transition:.2s}
+.track{width:62px;height:26px;border-radius:99px;background:rgba(255,107,129,.12);border:1px solid rgba(255,107,129,.4);position:relative;transition:.2s}
+.track::before{content:"OFF";position:absolute;top:0;bottom:0;right:11px;display:flex;align-items:center;font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#ff8c9e;transition:.2s}
+.track::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#8a849f;transition:.2s}
 .switch.on .track{background:var(--grad);border-color:transparent}
-.switch.on .track::after{left:19px;background:#fff}
+.switch.on .track::before{content:"ON";right:auto;left:12px;color:#fff}
+.switch.on .track::after{left:41px;background:#fff}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);
       border-radius:18px;padding:20px 22px;backdrop-filter:blur(6px)}
 .label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
