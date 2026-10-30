@@ -168,7 +168,7 @@ tile with the airline's ICAO code.
 
 - **Open FCAC window** (also the double-click action)
 - **Update from SimBrief now**: re-check and re-apply immediately
-- **Auto-update**: pause/resume checking (every 60 s by default)
+- **Active** switch: pause/resume checking (every 60 s by default)
 - **Install airline pack**: packs in the catalog that aren't installed (or have an update). One click downloads, verifies and installs.
 - **Uninstall airline pack**: one click removes what that pack added and **restores any pack that was in the Fenix
   folder before**. Recordings you made yourself stay in `Airlines`.
