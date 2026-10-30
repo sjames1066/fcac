@@ -427,7 +427,16 @@ def add_airports(root: Path, project: dict, text: str) -> tuple[list[str], list[
 
 
 def remove_airport(root: Path, project: dict, code: str) -> None:
+    """Take an airport off the checklist, together with anything recorded for it (recorded or not)."""
+    slot_id = f"airports/{project['icao']}_{code}"
+    try:
+        delete_slot(root, project, slot_id)
+    except StudioError:
+        pass
     project["airports"] = [c for c in project["airports"] if c != code]
+    project.get("scripts", {}).pop(slot_id, None)
+    if slot_id in project.get("skipped", []):
+        project["skipped"].remove(slot_id)
     save(root, project)
 
 

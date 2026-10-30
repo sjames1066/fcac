@@ -1066,6 +1066,9 @@ function slotRow(c,r){
   f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,sc,sf2,f);
   if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
   if(r.done){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title="Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);studio("delete",{...pid(c),slot:r.id})};act.append(p,sp2,x)}
+  if(r.folder==="airports"){const code=r.id.slice(("airports/"+c.icao+"_").length);const ra=el("button","ghost danger","Remove airport");let armA=null;
+    ra.title="Take this airport out of the pack"+(r.done?" (deletes its recording too)":"");
+    ra.onclick=()=>{if(!ra.classList.contains("arm")){ra.classList.add("arm");ra.textContent="Remove "+code+"?";armA=setTimeout(()=>{ra.classList.remove("arm");ra.textContent="Remove airport"},3500);return}clearTimeout(armA);studio("airport",{...pid(c),code,remove:true})};act.append(ra)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,sf2.nextSibling)}
   d.append(act);return d;
 }
@@ -1140,7 +1143,6 @@ function renderStudio(){
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
-      if(c.airports.length){const cr=el("div","chiprow");c.airports.forEach(a=>{const b=el("button","ghost",a+" ✕");b.onclick=()=>studio("airport",{...pid(c),code:a,remove:true});cr.append(b)});d.append(cr)}
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));
