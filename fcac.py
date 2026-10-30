@@ -1745,6 +1745,7 @@ class UIMixin:
             "packs": packs,
             "catalog_error": self.catalog_error,
             "app_update": app_update(),
+            "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
@@ -1966,6 +1967,18 @@ class UIMixin:
             return self.studio_action(name[7:], data)
         elif name == "open":
             self._open_folder(str(data.get("what", "")))
+        elif name == "check_update":   # re-read catalog.json now: the newest FCAC and the pack list
+            try:
+                self.catalog = load_catalog(load_config())
+                self.catalog_error = ""
+            except AppError as exc:
+                return {"error": str(exc)}
+            self.update_checked = time.time()
+            if any([cache_remote_logo(e) for e in self.catalog]):
+                self.logo_version += 1
+            self.refresh_menu()
+            latest = app_update()
+            return {"ok": True, "version": VERSION, "latest": latest["version"] if latest else ""}
         else:
             return {"error": "unknown action"}
         return {"ok": True}
@@ -2330,6 +2343,7 @@ class TrayApp(UIMixin):
         self.auto = True
         self.catalog: list[dict] = []
         self.catalog_error = ""
+        self.update_checked = 0.0
         self._ui_init()
         global CHOOSER
         CHOOSER = self.ask_choice
@@ -2587,6 +2601,7 @@ class TrayApp(UIMixin):
             try:
                 self.catalog = load_catalog(load_config())
                 self.catalog_error = ""
+                self.update_checked = time.time()
                 if any([cache_remote_logo(e) for e in self.catalog]):
                     self.logo_version += 1
                 if notify:

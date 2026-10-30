@@ -611,6 +611,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 
 <div class="modal" id="m-settings"><div class="dialog" style="width:500px">
   <h3>Settings</h3><p>How FCAC behaves. Changes apply when you press Save.</p>
+  <div class="setting"><div class="label">Updates</div>
+    <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><b id="s-ver" style="display:block;font-size:13.5px"></b><span id="s-chk" style="color:var(--muted);font-size:12.5px"></span></div>
+      <button id="s-check">Check for updates</button><button class="primary" id="s-upd" style="display:none">Update now</button></div></div>
   <div class="setting"><div class="label">SimBrief username</div>
     <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
   <div class="setting"><div class="label">When I minimize this window</div>
@@ -886,9 +889,15 @@ function openSettings(){
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
   pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
-  $("#m-settings").classList.add("show");
+  renderSetUpd();$("#m-settings").classList.add("show");
 }
 $("#settings").onclick=openSettings;
+function renderSetUpd(){const a=snap&&snap.app_update;$("#s-ver").textContent="FCAC v"+((snap&&snap.version)||"");
+  const t=snap&&snap.update_checked?new Date(snap.update_checked):null;const when=t?"Last checked "+t.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"Not checked yet";
+  $("#s-chk").textContent=a?"FCAC "+a.version+" is available. "+when:(t?"You're up to date. ":"")+when;
+  const u=$("#s-upd");u.style.display=a?"":"none";u.textContent=a&&a.auto?"Update now":"Download"}
+$("#s-check").onclick=async()=>{const b=$("#s-check");b.disabled=true;b.textContent="Checking...";const r=await api("check_update",{});b.disabled=false;b.textContent="Check for updates";await refreshNow();renderSetUpd();if(r.ok)toast(r.latest?"FCAC "+r.latest+" is available":"You're up to date (FCAC v"+r.version+")")};
+$("#s-upd").onclick=()=>$("#upd-go").click();
 $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
