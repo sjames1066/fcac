@@ -1141,7 +1141,7 @@ function renderStudio(){
     if(gr.name==="Airports"){
       d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
-      add.onclick=async()=>{if(!i.value.trim())return;const r=await studio("airport",{...pid(c),code:i.value});if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
+      add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
     }
     if(gr.name==="Boarding music"){
