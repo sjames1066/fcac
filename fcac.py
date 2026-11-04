@@ -1823,11 +1823,9 @@ class UIMixin:
         window = self.ui.window
         if window is not None and window.poll() is None:
             window.terminate()
-            self.set_status("FCAC is in the tray - double-click the icon to open the window")
 
     def window_closed(self) -> None:
         """Closing the window never quits FCAC: it keeps running in the tray (it has to, to build the landing announcement)."""
-        self.set_status("FCAC is in the tray - double-click the icon to open the window")
 
     # things the page can ask for
     def ui_action(self, name: str, data: dict) -> dict:
