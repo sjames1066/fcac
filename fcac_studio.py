@@ -29,7 +29,7 @@ MUSIC_NAME = re.compile(r"^\w[\w .&'()-]{0,59}$")
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
 GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
-    ("Modular_Welcome", "Welcome aboard - the rest", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
+    ("Modular_Welcome", "BoardingWelcome - the rest", "Everything in the welcome PA after the destination: seatbelts, safety, enjoy your flight..."),
     ("Modular_Landing", "Landing - the rest", "Everything in the landing PA after the local time: cabin crew seats, seatbelt sign, belongings, thank you..."),
     ("BoardingWelcome[Morning]", "BoardingWelcome - morning (generic)", "Generic welcome aboard, good morning. Played every 2-6 min during boarding."),
     ("BoardingWelcome[Afternoon]", "BoardingWelcome - afternoon (generic)", "Generic welcome aboard, good afternoon."),
@@ -249,8 +249,8 @@ def slot_list(project: dict) -> list[dict]:
     L1, L2 = "Part 1 - the arrival (welcome to, airport name, local time)", "Part 2 - the rest of the landing (after the time)"
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
-            add("Welcome aboard", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
-    add("Welcome aboard", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
+            add("BoardingWelcome", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
+    add("BoardingWelcome", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
     for stem, label, script in GREETINGS:
         if not stem.startswith("Welcome_"):
             add("Landing", "time", stem, label, script, required=True, part=L1)

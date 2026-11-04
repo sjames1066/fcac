@@ -921,7 +921,7 @@ $("#forget").onclick=async()=>{await api("forget");toast("Remembered choices cle
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{what:b.dataset.open}));
 
 // ---------------------------------------------------------------- Pack Studio
-let view="main", studioSig="", recState=null, openGroups=new Set(["Welcome aboard"]), playing=null;
+let view="main", studioSig="", recState=null, openGroups=new Set(["BoardingWelcome"]), playing=null;
 function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";$("#view-dl").style.display=v==="dl"?"":"none";
   $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");$("#tab-dl").classList.toggle("on",v==="dl");if(v==="studio"){studioSig="";renderStudio()}}
 $("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl");
@@ -1143,12 +1143,12 @@ function renderStudio(){
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["Welcome aboard","Landing","Airports","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  const order=["BoardingWelcome","Landing","Airports","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
     if(gr.name==="Airports"){
-      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). FCAC mixes that one clip into both the welcome aboard and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
+      d.append(el("div","small","Add your airports (paste a whole list if you like) and record just each name (for example “London Heathrow”). FCAC mixes that one clip into both the BoardingWelcome and the landing PA. Add a terminal variant like EGLL_T5 if you record one."));
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
