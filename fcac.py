@@ -1396,7 +1396,7 @@ def rebuild_landing(cfg: dict, arrival: str | None) -> str:
     if not arrival:
         return f"Landed at {dest} - no local time from the sim, kept the PA as it was"
     if not airline_has_pack(cfg, airline):
-        return f"Landed at {dest} - no {airline} airline pack installed, nothing changed"
+        return f"Landed at {dest} - no {airline} airline pack installed"
     stored = state.get("variants", {}).get(f"{airline}_{dest}")
     message = apply_destination(cfg, airline, dest, choose=choose_default, variant=stored, arrival=arrival, only={"dest"},
                                 voice=state.get("voice_used", {}).get(f"{airline}_{dest}") or None)
@@ -1463,7 +1463,7 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
         state["applied"] = False
         state.pop("last", None)
         save_state(state)
-        return False, f"{code} to {flight['icao']}: no {code} airline pack installed - nothing changed"
+        return False, f"{code} to {flight['icao']}: no {code} airline pack installed"
     message = apply_destination(cfg, code, flight["icao"], variant=variant, arrival=flight.get("arrival"))
     state = load_state()
     state["last"] = key
