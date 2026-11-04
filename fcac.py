@@ -1474,6 +1474,14 @@ def update(cfg: dict, force: bool = False, airline: str | None = None, dest: str
 
 
 # --------------------------------------------------------------------------- tray app
+def _bold_sans(text: str) -> str:
+    """Windows tray menus can't bold a normal item, so use the mathematical bold sans-serif letters."""
+    return "".join(chr(0x1D5D4 + ord(c) - 65) if "A" <= c <= "Z" else chr(0x1D5EE + ord(c) - 97) if "a" <= c <= "z" else c for c in text)
+
+
+ACTIVE_BOLD = _bold_sans("Active")
+
+
 def make_icon_image():
     from fcac_icon import make_icon
 
@@ -2355,7 +2363,7 @@ class TrayApp(UIMixin):
             item(lambda _: self.status_text(), None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
-            item("Auto-update", self.toggle_auto, checked=lambda _: self.auto),
+            item(lambda _: f"\u2714  {ACTIVE_BOLD}" if self.auto else f"{ACTIVE_BOLD}  (off)", self.toggle_auto),   # "✔  Active" in bold letters
             menu.SEPARATOR,
             item("Install airline pack", menu(self.install_items)),
             item("Uninstall airline pack", menu(self.uninstall_items)),
