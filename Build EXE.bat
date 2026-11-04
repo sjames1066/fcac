@@ -28,7 +28,7 @@ echo.
 "%PYEXE%" update_catalog.py %FCACVER% "%~dp0dist\FCAC-Setup-%FCACVER%.exe"
 echo.
 echo To publish: 1) create the GitHub release v%FCACVER% and attach the installer above,
-echo             2) then upload the updated catalog.json in this folder to the fcac repository on GitHub.
+echo             2) then upload C:\FCAC\catalog.json (NOT the one in dist) to the fcac repository on GitHub.
 start "" "%~dp0dist"
 pause
 exit /b 0
