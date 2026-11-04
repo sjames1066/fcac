@@ -1076,8 +1076,8 @@ function slotRow(c,r){
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
   f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,sc,sf2,f);
   if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
-  const isAp=r.folder==="airports",apCode=isAp?r.id.slice(("airports/"+c.icao+"_").length):"";
-  if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?"Remove this airport"+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio("airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
+  const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
+  if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
   if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,sf2.nextSibling)}
   d.append(act);return d;
 }
@@ -1142,8 +1142,8 @@ function renderStudio(){
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
   const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
-  ["Airports","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
-  const order=["BoardingWelcome","Landing","Airports","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+  ["Airports","Aircraft","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
+  const order=["BoardingWelcome","Landing","Airports","Aircraft","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
   groups.forEach(gr=>{
     const d=el("details","grp");d.open=openGroups.has(gr.name);d.ontoggle=()=>{d.open?openGroups.add(gr.name):openGroups.delete(gr.name)};
     const sm=el("summary",null,gr.name);sm.append(el("span",null,gr.rows.filter(r=>r.done||r.skipped).length+"/"+gr.rows.length));d.append(sm);
@@ -1152,6 +1152,17 @@ function renderStudio(){
       const line=el("div","addline"),i=el("textarea");i.rows=2;i.placeholder="EGLL, EGKK, EGCC  (paste a list: commas, semicolons, spaces or new lines)";i.style.textTransform="uppercase";i.style.resize="vertical";const add=el("button",null,"Add airports");
       add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("airport",{...pid(c),code:text});if(!r.ok)i.value=text;if(r.ok){openGroups.add("Airports");toast(r.added+(r.added===1?" airport added":" airports added")+(r.skipped&&r.skipped.length?" - skipped: "+r.skipped.slice(0,8).join(", "):""),r.skipped&&r.skipped.length?6000:3200)}studioSig="";renderStudio()};
       i.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();add.click()}});line.append(i,add);d.append(line);
+    }
+    if(gr.name==="Aircraft"){
+      d.append(el("div","small","Optional. Record the aircraft type (for example “Airbus A320” or “Boeing 737”) so an announcement can say which aircraft you are flying. Nothing is added to the pack unless this is on."));
+      const sw=el("div","switch"+(c.aircraft_on?" on":""));sw.style.margin="10px 0";sw.append(el("span",null,"Say the aircraft type"),el("div","track"));
+      sw.onclick=async()=>{openGroups.add("Aircraft");await studio("aircraft",{...pid(c),on:!c.aircraft_on});studioSig="";renderStudio()};d.append(sw);
+      if(c.aircraft_on){
+        const pc=el("div","chiprow");(c.aircraft_presets||[]).filter(n=>!c.aircraft.includes(n)).forEach(n=>{const b=el("button","ghost","+ "+n);b.onclick=async()=>{openGroups.add("Aircraft");await studio("aircraft",{...pid(c),code:n});studioSig="";renderStudio()};pc.append(b)});d.append(pc);
+        const line=el("div","addline"),i=el("input");i.type="text";i.placeholder="Another aircraft, e.g. Boeing 757";const add=el("button",null,"Add");
+        add.onclick=async()=>{if(!i.value.trim())return;const text=i.value;i.value="";i.blur();const r=await studio("aircraft",{...pid(c),code:text});if(!r.ok)i.value=text;openGroups.add("Aircraft");studioSig="";renderStudio()};
+        i.addEventListener("keydown",e=>{if(e.key==="Enter")add.click()});line.append(i,add);d.append(line);
+      }
     }
     if(gr.name==="Boarding music"){
       d.append(el("div","small","Background music played while passengers board. Add a track name, then upload the audio - use only music you have the right to share. It is not recorded or processed, just converted to .ogg."));

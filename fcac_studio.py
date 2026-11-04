@@ -26,6 +26,9 @@ MAX_UPLOAD = 60 * 1024 * 1024
 AUDIO_EXT = {".wav", ".ogg", ".mp3", ".m4a", ".flac", ".webm", ".opus", ".aac"}
 AIRPORT = re.compile(r"^[A-Z0-9]{4}(_[A-Z0-9]{1,8})?$")
 MUSIC_NAME = re.compile(r"^\w[\w .&'()-]{0,59}$")
+AIRCRAFT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .\-/]{0,29}$")
+AIRCRAFT_PRESETS = ["Airbus A319", "Airbus A320", "Airbus A321", "Airbus A330", "Airbus A350", "Airbus A380", "Boeing 737",
+                    "Boeing 737 MAX", "Boeing 777", "Boeing 787", "Embraer 175", "Embraer 195"]
 EXTRA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$")
 
 GENERAL = [  # (file name, label, what to say). Names are Fenix's announcement types; every one is optional except the modular pair.
@@ -268,6 +271,9 @@ def slot_list(project: dict) -> list[dict]:
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
             "Say airport name", required=False)
+    if project.get("aircraft_on"):   # optional: the aircraft type, so a PA can say "this Airbus A320"
+        for name in project.get("aircraft", []):
+            add("Aircraft", "aircraft", f"{icao}_{slug(name)}", name, f'"{name}"', required=False)
     add("Refuelling", "fuel", "Fuel_Tag", "Refuelling tag-on",
         "Added to the welcome while the aircraft is being refuelled, e.g. 'We are currently refuelling, so please keep your seatbelt unfastened...'")
     for name in project.get("music", []):
@@ -434,6 +440,46 @@ def remove_airport(root: Path, project: dict, code: str) -> None:
     except StudioError:
         pass
     project["airports"] = [c for c in project["airports"] if c != code]
+    project.get("scripts", {}).pop(slot_id, None)
+    if slot_id in project.get("skipped", []):
+        project["skipped"].remove(slot_id)
+    save(root, project)
+
+
+def set_aircraft_on(root: Path, project: dict, on: bool) -> None:
+    project["aircraft_on"] = bool(on)
+    save(root, project)
+
+
+def add_aircraft(root: Path, project: dict, text: str) -> tuple[list[str], list[str]]:
+    """Add aircraft names (one per line, or separated by commas or semicolons). Returns (added, skipped)."""
+    added: list[str] = []
+    skipped: list[str] = []
+    have = {slug(n).lower() for n in project.get("aircraft", [])}
+    for raw in re.split(r"[,;\n]+", text):
+        name = " ".join(raw.split())
+        if not name:
+            continue
+        if not AIRCRAFT_NAME.match(name):
+            skipped.append(name)
+        elif slug(name).lower() not in have:
+            have.add(slug(name).lower())
+            added.append(name)
+    if added:
+        project["aircraft"] = project.get("aircraft", []) + added
+        project["aircraft_on"] = True
+        save(root, project)
+    return added, skipped
+
+
+def remove_aircraft(root: Path, project: dict, name: str) -> None:
+    """Take an aircraft name off the list together with its recording."""
+    slot_id = f"aircraft/{project['icao']}_{slug(name)}"
+    try:
+        delete_slot(root, project, slot_id)
+    except StudioError:
+        pass
+    project["aircraft"] = [n for n in project.get("aircraft", []) if n != name]
     project.get("scripts", {}).pop(slot_id, None)
     if slot_id in project.get("skipped", []):
         project["skipped"].remove(slot_id)
@@ -660,7 +706,7 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
     return {"zip": str(zip_path), "entry": str(entry_path), "size": entry["size"], "tag": tag}
 
 
-IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "dep", "dest", "fuel")
+IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "aircraft", "dep", "dest", "fuel")
 
 
 def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str, progress=None) -> dict:
@@ -697,6 +743,11 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         match = re.match(rf"^{re.escape(icao)}_([A-Z0-9]{{4}}(?:_[A-Z0-9]{{1,8}})?)$", stem, re.I)
         if folder == "airports" and match and match[1].upper() not in project["airports"]:
             project["airports"].append(match[1].upper())
+        elif folder == "aircraft" and stem.lower().startswith(icao.lower() + "_") and len(stem) > len(icao) + 1:
+            name = stem[len(icao) + 1:].replace("_", " ")
+            if name not in project.setdefault("aircraft", []):
+                project["aircraft"].append(name)
+            project["aircraft_on"] = True
         elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
             project["extras"].append(stem)
         elif folder == "main" and stem.startswith("BoardingMusic~") and MUSIC_NAME.match(stem[14:]):

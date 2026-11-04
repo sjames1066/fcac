@@ -2052,7 +2052,8 @@ class UIMixin:
                 "artist": project.get("artist", ""), "credit_url": project.get("credit_url", ""),
                 "donate_url": project.get("donate_url", ""), "accent": project.get("accent", ""),
                 "description": project.get("description", ""), "version": project.get("version", "1.0.0"),
-                "effect": bool(project.get("effect", True)), "airports": project["airports"], "extras": project["extras"], "music": project.get("music", []),
+                "effect": bool(project.get("effect", True)), "airports": project["airports"], "aircraft": project.get("aircraft", []), "aircraft_on": bool(project.get("aircraft_on")),
+                "aircraft_presets": fcac_studio.AIRCRAFT_PRESETS, "extras": project["extras"], "music": project.get("music", []),
                 "logo": fcac_studio.logo_path(STUDIO_DIR, project).is_file(), "has_script": bool(project.get("scripts")), "origin": bool(project.get("origin")), "upgrades": fcac_studio.upgrade_preview(STUDIO_DIR, project), "target_pending": False, "rows": rows, "missing": len(fcac_studio.missing(STUDIO_DIR, project)),
                 "target": target, "target_count": count, "target_source": label,
                 "done": sum(1 for r in rows if r["done"] or r["skipped"]), "total": len(rows)}
@@ -2194,6 +2195,16 @@ class UIMixin:
                     project.setdefault("scripts", {}).update(found)
                 fcac_studio.save(STUDIO_DIR, project)
                 return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
+            elif name == "aircraft":
+                if "on" in data:
+                    fcac_studio.set_aircraft_on(STUDIO_DIR, project, bool(data["on"]))
+                elif data.get("remove"):
+                    fcac_studio.remove_aircraft(STUDIO_DIR, project, str(data.get("code", "")))
+                else:
+                    added, skipped = fcac_studio.add_aircraft(STUDIO_DIR, project, str(data.get("code", ""))[:2000])
+                    if not added:
+                        return {"error": "Not an aircraft name: " + ", ".join(skipped[:5])} if skipped else {"ok": True, "added": 0}
+                    return {"ok": True, "added": len(added), "skipped": skipped}
             elif name == "airport":
                 if data.get("remove"):
                     fcac_studio.remove_airport(STUDIO_DIR, project, str(data.get("code", "")))
