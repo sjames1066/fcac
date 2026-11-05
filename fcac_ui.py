@@ -632,6 +632,13 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <div class="radio" data-v="25"><b>Now and then</b><span>About one flight in four gets a random bolt-on from your extra folder</span></div>
       <div class="radio" data-v="50"><b>Often</b><span>About one flight in two</span></div>
     </div></div>
+  <div class="setting"><div class="label">PA volume</div>
+    <div class="radios" id="s-boost">
+      <div class="radio" data-v="0"><b>As recorded</b><span>No change to the announcements</span></div>
+      <div class="radio" data-v="15"><b>Louder (+15%)</b><span>A little louder than the recordings</span></div>
+      <div class="radio" data-v="30"><b>Louder (+30%)</b><span>Recommended if the cabin PAs sound quiet in the sim</span></div>
+      <div class="radio" data-v="50"><b>Much louder (+50%)</b><span>Peaks are softly limited so it never distorts</span></div>
+    </div></div>
   <div class="setting"><div class="label">Start FCAC automatically</div>
     <div class="radios" id="s-start">
       <div class="radio" data-v="off"><b>No</b><span>I'll start it myself</span></div>
@@ -883,11 +890,11 @@ function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classLi
 let cfg={on_close:"tray",autostart:"off",min:"no",time:"yes",extra:"25"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance)};
+  const s=snap.settings||{}; cfg={on_close:"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost)};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   renderSetUpd();$("#m-settings").classList.add("show");
 }
@@ -902,7 +909,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),quit_with_msfs:$("#s-quit").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;

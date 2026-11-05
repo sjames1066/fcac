@@ -243,6 +243,16 @@ def _limit(x: np.ndarray, ceiling: float = 0.89) -> np.ndarray:
     return out
 
 
+def boost(src: Path, dst: Path, percent: int) -> None:
+    """A louder copy of an .ogg: `percent` more amplitude, with a soft knee so peaks never clip."""
+    data, rate = _read(src)
+    y = data * (1 + percent / 100)
+    knee = 0.8
+    mag = np.abs(y)
+    y = np.where(mag > knee, np.sign(y) * (knee + 0.17 * np.tanh((mag - knee) / 0.17)), y)   # tops out at 0.97, leaving room for the encoder
+    _write(dst, y.astype("float32"), rate)
+
+
 def process_clip(src: Path, dst: Path, target_lufs: float, effect: bool = True) -> dict:
     """Read any audio file, optionally apply the PA sound, set its loudness to target_lufs and save an .ogg.
     Returns {"seconds", "lufs_in", "lufs_out"}."""

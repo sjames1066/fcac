@@ -104,6 +104,7 @@ DEFAULT_CONFIG = {
     "notifications": True,
     "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
     "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "pa_boost": 30,                   # percent louder than the recordings when FCAC puts a PA into the Fenix folder (0 = untouched)
     "extra_chance": 25,               # percent of flights that get one random bolt-on from the extra folder (0 = never)
     "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
@@ -1002,14 +1003,58 @@ def target_names(pristine: Path | None, mapping: dict, also: Path | None = None)
     return names or [f"{mapping['default_name']}.ogg"]
 
 
-def install_file(src: Path, dst: Path) -> None:
-    """Copy via a temp file + atomic replace. Retries because the sim may briefly lock the file."""
+def boost_percent(cfg: dict) -> int:
+    try:
+        return max(0, min(100, int(cfg.get("pa_boost", 30))))
+    except (TypeError, ValueError):
+        return 30
+
+
+def boosted_copy(src: Path, dst: Path, percent: int) -> bool:
+    """Write a louder copy of an .ogg. False = could not (no audio library...), so the caller copies it unchanged."""
+    if fcac_audio is None or not fcac_audio.have_backend():
+        return False
+    try:
+        fcac_audio.boost(src, dst, percent)
+        return True
+    except (fcac_audio.AudioError, OSError, ValueError) as exc:
+        log.warning("Could not make %s louder (%s) - copied as recorded", src.name, exc)
+        dst.unlink(missing_ok=True)
+        return False
+
+
+def boost_stamp(src: Path, percent: int) -> str:
+    info = src.stat()
+    return f"{info.st_mtime_ns}:{info.st_size}:{percent}"
+
+
+def sync_needed(src: Path, dst: Path, percent: int) -> bool:
+    """Is the Fenix copy of a general PA out of date? (A boosted copy never equals its source, so it is tracked by stamp.)"""
+    if not dst.is_file():
+        return True
+    if not percent or src.name.startswith("BoardingMusic"):
+        return not filecmp.cmp(src, dst, shallow=False)
+    return load_state().get("boosted", {}).get(str(dst)) != boost_stamp(src, percent)
+
+
+def install_file(src: Path, dst: Path, boost: int = 0) -> None:
+    """Copy via a temp file + atomic replace (louder by `boost` percent when asked). Retries because the sim may briefly
+    lock the file."""
     tmp = dst.with_name(dst.name + ".tmp")
+    made = bool(boost) and not src.name.startswith("BoardingMusic") and boosted_copy(src, tmp, boost)
     last: Exception | None = None
     for _ in range(6):
         try:
-            shutil.copyfile(src, tmp)
+            if not made:
+                shutil.copyfile(src, tmp)
             os.replace(tmp, dst)
+            state = load_state()
+            stamps = state.setdefault("boosted", {})
+            if made and src.is_file():
+                stamps[str(dst)] = boost_stamp(src, boost)
+            else:
+                stamps.pop(str(dst), None)
+            save_state(state)
             return
         except PermissionError as exc:
             last = exc
@@ -1247,6 +1292,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     voice_dir, voice_name, voice_count = choose_voice(source, lib_dir, voice)  # clips and parts come from the voice
     log.info("Applying %s to %s: recordings %s, voice %s, planned landing time %s%s", airline, dest_icao, source,
              voice_name or "-", arrival or "none", f", only {sorted(only)}" if only else "")
+    boost = boost_percent(cfg)
     fenix_dir = airline_packs_dir(cfg) / airline
     if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
         pristine = generic_source(cfg, airline, fenix_dir)
@@ -1263,7 +1309,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
         fenix_dir.mkdir(parents=True)
         for path in pristine.iterdir():
             if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name):
-                shutil.copy2(path, fenix_dir / path.name)
+                install_file(path, fenix_dir / path.name, boost)
 
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
     # destination (SafetyBriefing, ArmDoors...): copy any that are new or changed into the Fenix pack.
@@ -1281,8 +1327,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                     sources[path.name] = path
         for name, path in sources.items():
             dst = fenix_dir / name
-            if not dst.is_file() or not filecmp.cmp(path, dst, shallow=False):
-                install_file(path, dst)
+            if sync_needed(path, dst, boost):
+                install_file(path, dst, boost)
                 synced += 1
 
     all_clips = {m["folder"]: find_clips(voice_dir, m["folder"], source, dest_icao) for m in cfg["mappings"]}
@@ -1355,14 +1401,14 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                         fcac_audio.join(pieces, out, pause)
                     except (fcac_audio.AudioError, OSError) as exc:
                         raise AppError(f"Could not join the pieces for {name}: {exc}") from exc
-                    install_file(out, dst)
+                    install_file(out, dst, boost)
                     log.info("Built %s = %s", name, " + ".join(p.stem for p in pieces))
                     built += 1
                 elif clip and not joined:
-                    install_file(clip, dst)
+                    install_file(clip, dst, boost)
                     built += 1
                 elif generic and generic.is_file():
-                    install_file(generic, dst)  # no recording (or no pieces) for this airport: back to the generic file
+                    install_file(generic, dst, boost)  # no recording (or no pieces) for this airport: back to the generic file
                 else:
                     dst.unlink(missing_ok=True)
             custom += bool(built)
@@ -1735,6 +1781,7 @@ class UIMixin:
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
+                "pa_boost": boost_percent(cfg),
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
                 "windows": sys.platform.startswith("win"),
@@ -1937,6 +1984,13 @@ class UIMixin:
                     state = load_state()
                     state.pop("last", None)
                     state.pop("extra_used", None)  # roll again for this flight
+                    save_state(state)
+                    self.wake.set()
+                boost = int(data.get("pa_boost", 30))
+                if boost in (0, 15, 30, 50) and boost != boost_percent(load_config()):
+                    set_config_value("pa_boost", boost)
+                    state = load_state()
+                    state.pop("last", None)   # rebuild everything at the new volume
                     save_state(state)
                     self.wake.set()
                 wanted = bool(data.get("local_time", True))
