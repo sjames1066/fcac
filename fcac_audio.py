@@ -115,14 +115,51 @@ def _fade(data: np.ndarray, rate: int, ms: int = 6) -> np.ndarray:
     return data
 
 
-def join(paths: list[Path], out: Path, pause_ms: int = 60) -> None:
-    """Play `paths` one after another and save as `out` (.ogg). Edges are trimmed and faded so the joins are clean;
-    `pause_ms` is the gap left between pieces."""
+def _trim_flow(data: np.ndarray, rate: int, lead_ms: int = 40, tail_ms: int = 70, rel_db: float = -18.0) -> np.ndarray:
+    """Cut a clip tight to its speech: dead air, mic clicks and breaths before the first word and after the last are
+    dropped. Speech starts where the smoothed level first holds at `rel_db` below the clip's normal speech level for
+    20 ms (and ends likewise); `lead_ms` / `tail_ms` are kept either side so soft starts and fading ends stay natural."""
+    mono = np.abs(data).max(axis=1)
+    win = max(1, int(rate * 0.01))
+    env = np.sqrt(np.convolve(mono ** 2, np.ones(win) / win, mode="same"))
+    threshold = max(SILENCE, float(np.percentile(env, 95)) * 10 ** (rel_db / 20))
+    hold = max(1, int(rate * 0.02))
+    held = np.convolve((env > threshold).astype("float32"), np.ones(hold, dtype="float32"), mode="valid") >= hold
+    starts = np.flatnonzero(held)
+    if len(starts) == 0:
+        return data
+    first, last = int(starts[0]), int(starts[-1]) + hold
+    return data[max(0, first - int(rate * lead_ms / 1000)): last + int(rate * tail_ms / 1000)]
+
+
+def _crossfade(a: np.ndarray, b: np.ndarray, rate: int, overlap_ms: int) -> np.ndarray:
+    """Join two pieces with a short equal-power overlap so the end of one runs into the start of the next."""
+    n = min(int(rate * overlap_ms / 1000), len(a) // 3, len(b) // 3)
+    if n < 2:
+        return np.concatenate([a, b])
+    angle = np.linspace(0.0, np.pi / 2, n, dtype="float32")[:, None]
+    mixed = a[-n:] * np.cos(angle) + b[:n] * np.sin(angle)
+    return np.concatenate([a[:-n], mixed, b[n:]])
+
+
+def join(paths: list[Path], out: Path, pause_ms: int = 60, flow: bool = False, overlap_ms: int = 14) -> None:
+    """Play `paths` one after another and save as `out` (.ogg).
+    flow=False: edges are trimmed and faded and `pause_ms` is left between pieces (clear, separate phrases).
+    flow=True: each piece is cropped tight to its speech and the pieces overlap slightly, so the greeting, the airport
+    name and the rest of the announcement run into each other like one natural sentence."""
     if not paths:
         raise AudioError("Nothing to join.")
     clips = [_read(Path(p)) for p in paths]
     rate = clips[0][1]
     channels = max(d.shape[1] for d, _ in clips)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if flow:
+        pieces = [_trim_flow(_channels(_resample(data, src_rate, rate), channels), rate) for data, src_rate in clips]
+        joined = pieces[0]
+        for piece in pieces[1:]:
+            joined = _crossfade(joined, piece, rate, overlap_ms)
+        _write(out, _fade(joined, rate, 4), rate)
+        return
     pieces = []
     for data, src_rate in clips:
         data = _channels(_resample(data, src_rate, rate), channels)
@@ -133,7 +170,6 @@ def join(paths: list[Path], out: Path, pause_ms: int = 60) -> None:
         if i and len(gap):
             parts.append(gap)
         parts.append(piece)
-    out.parent.mkdir(parents=True, exist_ok=True)
     _write(out, np.concatenate(parts), rate)
 
 

@@ -108,6 +108,7 @@ DEFAULT_CONFIG = {
     "extra_chance": 25,               # percent of flights that get one random bolt-on from the extra folder (0 = never)
     "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
     "landing_speed_knots": 60,        # the landing PA is built once you have landed and slowed to this ground speed
+    "join_style": "flow",             # "flow": pieces are cropped tight and run into each other; "pauses": a short gap between them
     "segment_pause_ms": 60,           # pause between the pieces of a joined PA (see the parts folder)
     "quit_with_msfs": True,           # when started with MSFS: close FCAC when the sim closes
     # Which pack files each folder replaces. Variants (e.g. BoardingWelcome[Morning].ogg) are found in the pack.
@@ -1398,6 +1399,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
 
     summary, custom, notes = [], 0, []
     pause = int(cfg.get("segment_pause_ms", 60))
+    flow = cfg.get("join_style", "flow") != "pauses"
     with tempfile.TemporaryDirectory(dir=DATA_DIR) as work:
         for mapping in cfg["mappings"]:
             if only and mapping["folder"] not in only:
@@ -1442,7 +1444,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
                         raise AppError("Joining PA pieces needs the numpy and soundfile libraries "
                                        "(run Setup FCAC.bat again, or use the latest FCAC.exe).")
                     try:
-                        fcac_audio.join(pieces, out, pause)
+                        fcac_audio.join(pieces, out, pause, flow)
                     except (fcac_audio.AudioError, OSError) as exc:
                         raise AppError(f"Could not join the pieces for {name}: {exc}") from exc
                     install_file(out, dst, boost)
@@ -1826,6 +1828,7 @@ class UIMixin:
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
                 "pa_boost": boost_percent(cfg),
+                "join_style": "pauses" if cfg.get("join_style") == "pauses" else "flow",
                 "autostart": current_autostart(),
                 "quit_with_msfs": bool(cfg.get("quit_with_msfs", True)),
                 "windows": sys.platform.startswith("win"),
@@ -2029,6 +2032,13 @@ class UIMixin:
                     state.pop("last", None)
                     state.pop("extra_used", None)  # roll again for this flight
                     state.pop("main_pick", None)
+                    save_state(state)
+                    self.wake.set()
+                style = "pauses" if data.get("join_style") == "pauses" else "flow"
+                if style != ("pauses" if load_config().get("join_style") == "pauses" else "flow"):
+                    set_config_value("join_style", style)
+                    state = load_state()
+                    state.pop("last", None)   # rebuild the joined announcements
                     save_state(state)
                     self.wake.set()
                 boost = int(data.get("pa_boost", 30))
