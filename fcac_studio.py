@@ -71,6 +71,7 @@ MINUTES = {0: "o'clock", 5: "oh five", 10: "ten", 15: "fifteen", 20: "twenty", 2
            35: "thirty-five", 40: "forty", 45: "forty-five", 50: "fifty", 55: "fifty-five"}
 
 
+VARIANT_BASES = ("Modular_Welcome", "AfterTakeoff")   # PAs that can have extra takes; FCAC picks one at random each flight
 MODE_SLOTS = ("CabinService", "AfterTakeoff", "SafetyBriefing", "Decompression")  # Prerecorded by default; "Manual" adds [Manual] to the file name
 MODES = ("Prerecorded", "Manual")
 
@@ -253,7 +254,14 @@ def slot_list(project: dict) -> list[dict]:
     for stem, label, script in GREETINGS:
         if stem.startswith("Welcome_"):
             add("BoardingWelcome", "time", stem, label, script, required=stem != "Welcome_Night", part=W1)
+    def add_variations(stem, group, label, script, part=None):
+        out[-1]["variantable"] = True
+        for n in project.get("variants", {}).get(stem, []):
+            add(group, "main", f"{stem}~v{n}", f"{label} - variation {n}", script, part=part)
+            out[-1].update({"variant_of": stem, "variant_n": n})
+
     add("BoardingWelcome", "main", "Modular_Welcome", GENERAL[0][1], GENERAL[0][2], required=True, part=W2)
+    add_variations("Modular_Welcome", "BoardingWelcome", GENERAL[0][1], GENERAL[0][2], W2)
     for stem, label, script in GREETINGS:
         if not stem.startswith("Welcome_"):
             add("Landing", "time", stem, label, script, required=True, part=L1)
@@ -267,6 +275,8 @@ def slot_list(project: dict) -> list[dict]:
     add("Landing", "main", "Modular_Landing", GENERAL[1][1], GENERAL[1][2], required=True, part=L2)
     for stem, label, script in GENERAL[2:]:
         add("Other announcements", "main", stem, label, script)
+        if stem in VARIANT_BASES:
+            add_variations(stem, "Other announcements", label, script)
     for code in project.get("airports", []):
         name = airport_name(code)
         add("Airports", "airports", f"{icao}_{code}", f"{code}: {name}" if name else f"Airport name - {code}",
@@ -448,6 +458,34 @@ def remove_airport(root: Path, project: dict, code: str) -> None:
 
 def set_aircraft_on(root: Path, project: dict, on: bool) -> None:
     project["aircraft_on"] = bool(on)
+    save(root, project)
+
+
+def add_variant(root: Path, project: dict, base: str) -> int:
+    """Add another take of a PA (FCAC picks one at random for each flight). Returns its number (2, 3, ...)."""
+    if base not in VARIANT_BASES:
+        raise StudioError("That announcement cannot have variations.")
+    taken = project.setdefault("variants", {}).setdefault(base, [])
+    if len(taken) >= 8:
+        raise StudioError("That is plenty of variations - 8 is the most.")
+    n = max(taken, default=1) + 1
+    taken.append(n)
+    save(root, project)
+    return n
+
+
+def remove_variant(root: Path, project: dict, base: str, n: int) -> None:
+    slot_id = f"main/{base}~v{n}"
+    try:
+        delete_slot(root, project, slot_id)
+    except StudioError:
+        pass
+    taken = project.get("variants", {}).get(base, [])
+    if n in taken:
+        taken.remove(n)
+    project.get("scripts", {}).pop(slot_id, None)
+    if slot_id in project.get("skipped", []):
+        project["skipped"].remove(slot_id)
     save(root, project)
 
 
@@ -750,6 +788,11 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["aircraft_on"] = True
         elif folder == "extra" and EXTRA_NAME.match(stem) and stem not in project["extras"]:
             project["extras"].append(stem)
+        elif folder == "main" and re.match(rf"^({'|'.join(VARIANT_BASES)})~v\d+$", stem):
+            base, n = stem.split("~v")
+            if int(n) not in project.setdefault("variants", {}).setdefault(base, []):
+                project["variants"][base].append(int(n))
+                project["variants"][base].sort()
         elif folder == "main" and stem.startswith("BoardingMusic~") and MUSIC_NAME.match(stem[14:]):
             project["music"].append(stem[14:])
     project["airports"].sort()

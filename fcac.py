@@ -1208,9 +1208,36 @@ def part_file(base: Path, name: str) -> Path | None:
     return _find_piece(base, [name], (PARTS_FOLDER, LEGACY_PARTS))
 
 
+VARIANT_RE = re.compile(r"^(?P<base>.+?)~v(?P<n>\d+)\.ogg$", re.IGNORECASE)   # AfterTakeoff~v2.ogg: another take of AfterTakeoff.ogg
+
+
+def is_variant(name: str) -> bool:
+    return bool(VARIANT_RE.match(name)) and not name.lower().startswith("boardingmusic")
+
+
+def choose_variant(key: str, options: list[Path]) -> Path:
+    """One of several takes of the same PA, rolled once per flight (so rebuilding the PA keeps the same one)."""
+    if len(options) < 2:
+        return options[0]
+    state = load_state()
+    picks = state.setdefault("main_pick", {})
+    chosen = next((p for p in options if p.name == picks.get(key)), None)
+    if chosen is None:
+        chosen = random.choice(options)
+        picks[key] = chosen.name
+        save_state(state)
+        log.info("Variation for %s: %s", key, chosen.stem)
+    return chosen
+
+
 def modular_piece(base: Path, kind: str) -> Path | None:
     """The rest of a modular PA: Modular_Welcome.ogg or Modular_Landing.ogg (in main, next to the generic PAs)."""
-    return _find_piece(base, [f"Modular_{kind}", f"{kind}_Rest"], (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS))
+    found = _find_piece(base, [f"Modular_{kind}", f"{kind}_Rest"], (MAIN_FOLDER, PARTS_FOLDER, LEGACY_PARTS))
+    if not found:
+        return None
+    takes = [found] + sorted(p for p in found.parent.iterdir() if p.is_file() and is_variant(p.name)
+                             and VARIANT_RE.match(p.name)["base"].lower() == found.stem.lower())
+    return choose_variant(f"{base.parent.name}/{base.name}/{found.stem}", takes)
 
 
 def is_modular(name: str) -> bool:
@@ -1308,7 +1335,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     if not fenix_dir.is_dir():  # e.g. the folder was deleted: put the complete generic pack back first
         fenix_dir.mkdir(parents=True)
         for path in pristine.iterdir():
-            if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name):
+            if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
                 install_file(path, fenix_dir / path.name, boost)
 
     # Your general PAs in Airlines\<ICAO>\main are the source of truth for everything FCAC doesn't swap per
@@ -1323,8 +1350,25 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
             if folder is None:
                 continue
             for path in sorted(folder.iterdir()):
-                if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name):
+                if path.is_file() and path.suffix.lower() == ".ogg" and path.name not in managed and not is_modular(path.name) \
+                        and not is_variant(path.name):
                     sources[path.name] = path
+        # extra takes of a PA (AfterTakeoff~v2.ogg): one of them is picked at random for each flight and installed under
+        # the PA's normal name. A voice with its own takes of a PA uses only those.
+        takes: dict[str, dict[str, Path]] = {}
+        for folder in (lib_dir / MAIN_FOLDER if pristine == lib_dir / MAIN_FOLDER else None, own_main):
+            if folder is None:
+                continue
+            mine = {}
+            for path in sorted(folder.iterdir()):
+                match = VARIANT_RE.match(path.name) if path.is_file() and is_variant(path.name) else None
+                if match and f"{match['base']}.ogg" not in managed:
+                    mine.setdefault(f"{match['base']}.ogg", {})[path.name] = path
+            for base_name, found in mine.items():
+                takes[base_name] = found if folder == own_main else {**takes.get(base_name, {}), **found}
+        for base_name, found in takes.items():
+            if base_name in sources or any(n.lower() == base_name.lower() for n in sources):
+                sources[base_name] = choose_variant(f"{airline}/{voice_dir.name}/{base_name}", [sources[base_name], *found.values()])
         for name, path in sources.items():
             dst = fenix_dir / name
             if sync_needed(path, dst, boost):
@@ -1461,7 +1505,7 @@ def restore_generic(cfg: dict, icao: str) -> str:
         raise AppError(f"No saved original {icao} announcements yet (FCAC saves them the first time it changes a pack).")
     fenix_dir.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.iterdir()):
-        if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name):
+        if path.is_file() and path.suffix.lower() == ".ogg" and not is_modular(path.name) and not is_variant(path.name):
             install_file(path, fenix_dir / path.name)
     state = load_state()
     state.pop("last", None)
@@ -1984,6 +2028,7 @@ class UIMixin:
                     state = load_state()
                     state.pop("last", None)
                     state.pop("extra_used", None)  # roll again for this flight
+                    state.pop("main_pick", None)
                     save_state(state)
                     self.wake.set()
                 boost = int(data.get("pa_boost", 30))
@@ -2249,6 +2294,12 @@ class UIMixin:
                     project.setdefault("scripts", {}).update(found)
                 fcac_studio.save(STUDIO_DIR, project)
                 return {"ok": True, "matched": len(project.get("scripts", {})), "skipped": skipped}
+            elif name == "variant":
+                base = str(data.get("base", ""))
+                if data.get("remove"):
+                    fcac_studio.remove_variant(STUDIO_DIR, project, base, int(data.get("n", 0)))
+                else:
+                    fcac_studio.add_variant(STUDIO_DIR, project, base)
             elif name == "aircraft":
                 if "on" in data:
                     fcac_studio.set_aircraft_on(STUDIO_DIR, project, bool(data["on"]))
@@ -2535,6 +2586,7 @@ class TrayApp(UIMixin):
             state = load_state()  # a new flight: the landing PA starts from the plan again and the extras roll again
             state.pop("live", None)
             state.pop("extra_used", None)
+            state.pop("main_pick", None)
             save_state(state)
             return
         with self.lock:  # wait for any update in progress
