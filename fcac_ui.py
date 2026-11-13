@@ -374,6 +374,10 @@ header p{margin:0;color:var(--muted);font-size:12.5px}
 .route{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1}
 .route .arrow{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 6px}
 .dest-name{color:var(--muted);margin-top:2px}
+.h-ids{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:3px}
+.h-name{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.h-dest{font-size:15px;color:var(--muted);margin-top:4px}.h-dest b{color:var(--text);font-weight:600}
+.h-nopack{font-size:15px;color:var(--muted);line-height:1.4}.h-nopack a{color:var(--text);font-weight:600;text-decoration:underline}
 .msg{margin-top:10px;font-size:13px;color:var(--muted)}
 .msg b{color:var(--text);font-weight:600}
 .hero .company{font-size:15px;font-weight:600;color:var(--text);margin-bottom:2px}
@@ -776,20 +780,24 @@ $("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go")
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
 function renderHero(){
-  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v]);
+  const sig=JSON.stringify([snap.setup_needed,snap.company,snap.voices,snap.flight,snap.message,snap.applied,snap.updated,snap.busy,snap.logo_v,(snap.packs||[]).filter(p=>p.installed).length]);
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
-  if(f&&f.airline){h.append(editableLogo(f.airline,"logo"))}
+  const noPack=!(snap.packs||[]).some(p=>p.installed);
+  if(f&&f.airline&&!noPack){h.append(editableLogo(f.airline,"logo"))}
   const mid=el("div"); mid.style.minWidth="0";
-  if(f&&f.dest){
+  if(noPack){
+    const t=el("div","h-nopack"); t.append(document.createTextNode("No airline pack installed. Please download or import one "));
+    const a=el("a",null,"here"); a.href="#"; a.onclick=e=>{e.preventDefault();setView("dl")}; t.append(a,document.createTextNode("."));
+    mid.append(t);
+  }else if(f&&f.dest){
     const ids=[f.number,f.callsign].filter(Boolean).join(" / ");
-    if(snap.company||ids){const c=el("div","company"); if(snap.company) c.append(el("span","nm",snap.company)); if(ids) c.append(el("span","ids",ids)); mid.append(c)}
-    const r=el("div","route"); r.append(document.createTextNode(f.airline||"???"));
-    r.append(el("span","arrow","→")); r.append(document.createTextNode(f.dest)); mid.append(r);
-    if(f.name) mid.append(el("div","dest-name",f.name));
-  }else mid.append(el("div","route","No flight yet"));
-  if(snap.message){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
+    if(ids) mid.append(el("div","h-ids",ids));
+    mid.append(el("div","h-name",snap.company||f.airline||"???"));
+    const d=el("div","h-dest"); d.append(el("b",null,f.dest)); if(f.name) d.append(document.createTextNode(" / "+f.name)); mid.append(d);
+  }else mid.append(el("div","h-name","No flight yet"));
+  if(snap.message&&!noPack){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   h.append(mid);
   const side=el("div","side");
   const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
@@ -815,7 +823,7 @@ function renderHero(){
       side.append(line);
     }
   } else side.append(b);
-  if(snap.updated) side.append(el("span","small","Last applied "+snap.updated));
+  if(snap.updated&&!noPack) side.append(el("span","small","Last applied "+snap.updated));
   h.append(side);
 }
 
