@@ -2540,6 +2540,8 @@ class UIMixin:
                 return {"ok": True, "path": str(dest), "finished": finished}
             elif name == "skip":
                 fcac_studio.set_skip(STUDIO_DIR, project, str(data.get("slot", "")), bool(data.get("skip", True)))
+            elif name == "unskip_all":
+                return {"ok": True, "count": fcac_studio.unskip_all(STUDIO_DIR, project)}
             elif name == "logo_remove":
                 fcac_studio.remove_logo(STUDIO_DIR, project)
             elif name == "folder":

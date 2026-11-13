@@ -1302,6 +1302,9 @@ function renderStudio(){
       $("#up-ok").onclick=async()=>{$("#m-up").classList.remove("show");const r=await studio("upgrade",pid(c));if(r.ok)toast("Renamed "+r.renamed+" clip"+(r.renamed==1?"":"s"))};$("#m-up").classList.add("show")};
     b.append(ub);root.append(b)}
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
+  const nSk=c.rows.filter(r=>r.skipped).length;
+  if(nSk){const ub=el("button","ghost","Unskip all ("+nSk+")");ub.style.cssText="margin-top:8px;padding:6px 12px";ub.title="Put every skipped announcement back on the checklist";
+    ub.onclick=async()=>{const r=await studio("unskip_all",pid(c));if(r&&r.ok)toast(r.count+" announcement"+(r.count==1?"":"s")+" put back on the checklist")};pr.append(ub)}
   const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Aircraft","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});

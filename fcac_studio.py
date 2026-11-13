@@ -701,6 +701,14 @@ def set_skip(root: Path, project: dict, slot_id: str, skip: bool) -> None:
     save(root, project)
 
 
+def unskip_all(root: Path, project: dict) -> int:
+    """Put every skipped announcement back on the checklist. Returns how many were skipped."""
+    n = len([r for r in status(root, project) if r["skipped"]])
+    project["skipped"] = []
+    save(root, project)
+    return n
+
+
 def missing(root: Path, project: dict) -> list[str]:
     return [s["label"] for s in status(root, project) if s["required"] and not s["done"] and not s["skipped"]]
 
@@ -726,6 +734,8 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
         archive.writestr(f"{inside}/voice.json", json.dumps(voice_json(project), indent=2))
         if project.get("scripts"):
             archive.writestr(f"{inside}/scripts.json", json.dumps(project["scripts"], indent=2, ensure_ascii=False))
+        if project.get("skipped"):
+            archive.writestr(f"{inside}/skipped.json", json.dumps(sorted(project["skipped"]), indent=2))
         archive.writestr("voice.json", json.dumps({"icao": project["icao"], "airline": project.get("airline", "")}, indent=2))
         if logo_path(root, project).is_file():
             archive.write(logo_path(root, project), "logo.png")
@@ -832,6 +842,13 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
             project["scripts"] = {k: v[:4000] for k, v in scripts.items() if k in known and isinstance(v, str) and v.strip()}
     except (OSError, ValueError):
         pass
+    try:  # the clips that were skipped (not recorded on purpose) when the pack was saved
+        skipped = json.loads((src / "skipped.json").read_text(encoding="utf-8-sig"))
+        if isinstance(skipped, list):
+            known = {slot["id"] for slot in slot_list(project)}
+            project["skipped"] = [i for i in skipped if isinstance(i, str) and i in known and i not in project["slots"]]
+    except (OSError, ValueError):
+        pass
     project["origin"] = str(src)
     save(root, project)
     _import_logo(root, project, src)
@@ -860,6 +877,11 @@ def install_to_library(root: Path, project: dict, airline_dir: Path) -> Path:
     (dest / "voice.json").write_text(json.dumps(voice_json(project), indent=2), encoding="utf-8")
     if project.get("scripts"):
         (dest / "scripts.json").write_text(json.dumps(project["scripts"], indent=2, ensure_ascii=False), encoding="utf-8")
+    skipped_file = dest / "skipped.json"
+    if project.get("skipped"):   # the clips you chose not to record are remembered with the pack
+        skipped_file.write_text(json.dumps(sorted(project["skipped"]), indent=2), encoding="utf-8")
+    else:
+        skipped_file.unlink(missing_ok=True)
     if logo_path(root, project).is_file():   # the logo belongs to the airline, so it goes beside its folders
         airline_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(logo_path(root, project), airline_dir / "logo.png")
