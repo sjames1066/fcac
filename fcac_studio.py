@@ -747,6 +747,21 @@ def export(root: Path, project: dict, out_dir: Path) -> dict:
 IMPORT_FOLDERS = ("main", "time", "parts", "extra", "airports", "aircraft", "dep", "dest", "fuel")
 
 
+def _import_logo(root: Path, project: dict, src: Path) -> None:
+    """Bring the airline's logo (Airlines\\<ICAO>\\logo.png, beside the voices folder) into a project that has none."""
+    if logo_path(root, project).is_file():
+        return
+    for folder in (src, src.parent.parent if src.parent.name.lower() == "voices" else None):
+        for name in ("logo.png", "logo.jpg", "logo.jpeg", "logo.webp"):
+            path = folder / name if folder else None
+            if path and path.is_file():
+                try:
+                    set_logo(root, project, path.read_bytes())
+                    return
+                except (StudioError, OSError):
+                    continue
+
+
 def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: str, progress=None) -> dict:
     """Open an existing voice folder (Airlines\\<ICAO> itself or voices\\<Name>) for editing: its clips are copied
     into a new project, untouched, and show as done. Opens the existing project if there already is one."""
@@ -759,7 +774,9 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         pass
     voice = str(info.get("name") or fallback_name).strip()[:40] or fallback_name
     try:
-        return load(root, icao, voice)
+        existing = load(root, icao, voice)
+        _import_logo(root, existing, src)   # an earlier import may have left the logo behind
+        return existing
     except StudioError:
         pass
     files = []
@@ -817,6 +834,7 @@ def import_pack(root: Path, icao: str, airline: str, src: Path, fallback_name: s
         pass
     project["origin"] = str(src)
     save(root, project)
+    _import_logo(root, project, src)
     return project
 
 
