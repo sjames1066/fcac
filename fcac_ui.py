@@ -881,7 +881,7 @@ function renderManage(){
 $("#mg-done").onclick=()=>$("#m-manage").classList.remove("show");
 $("#mg-add").onclick=async()=>{const name=$("#mg-new").value.trim(),p=(snap.packs||[]).find(x=>x.icao===manageIcao&&x.installed);if(!name){$("#mg-msg").textContent="Type a name for the voice.";return}
   const r=await studio("create",{icao:manageIcao,airline:p?p.name:manageIcao,voice:name});if(r.ok){$("#m-manage").classList.remove("show");setView("studio")}else $("#mg-msg").textContent=r.error||""};
-let importFile=null;
+let importFile=null,importWatch=null;   // importWatch: after an import starts, go back to the Dashboard when it has installed
 $("#import-btn").onclick=()=>{importFile=null;$("#i-url").value="";$("#i-input").value="";$("#i-file").textContent="No file chosen";$("#i-msg").textContent="";$("#m-import").classList.add("show");setTimeout(()=>$("#i-url").focus(),60)};
 $("#i-cancel").onclick=()=>$("#m-import").classList.remove("show");
 $("#i-pick").onclick=()=>$("#i-input").click();
@@ -895,7 +895,7 @@ $("#i-ok").onclick=async()=>{
     let r;
     if(importFile){const q=new URLSearchParams({file:importFile.name,t:TOKEN});const x=await fetch("/import/upload?"+q,{method:"POST",headers:{"X-Token":TOKEN},body:importFile});r=await x.json()}
     else r=await api("import_url",{url});
-    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Download Packs tab for progress",5000);setView("dl")}
+    if(r.error){msg.textContent=r.error}else{$("#m-import").classList.remove("show");toast("Importing - watch the Download Packs tab for progress",5000);importWatch={t0:Date.now(),seen:false,n:snap.installs_done||0};setView("dl")}
   }catch(e){msg.textContent="Import failed - could not send the file."}
   $("#i-ok").disabled=false;$("#i-ok").textContent="Import";
 };
@@ -1347,6 +1347,10 @@ async function tick(){
     const r=await fetch("/api/state",{headers:{"X-Token":TOKEN}}); snap=await r.json();
     $("#auto").classList.toggle("on",!!snap.auto); $("#ver").textContent="FCAC v"+(snap.version||"");
     renderHero(); renderKeep(); renderUpd(); renderJob(); renderStudio(); renderPacks(); if($("#m-manage").classList.contains("show"))renderManage(); renderAliases(); renderWelcome(); renderPrompt();
+    if(importWatch){const busy=(snap.packs||[]).some(p=>p.task&&p.task.kind==="install");
+      if(busy)importWatch.seen=true;
+      if(!busy&&(snap.installs_done||0)>importWatch.n){importWatch=null;setView("main");toast("Pack imported",4000)}   // finished: back to the Dashboard
+      else if(!busy&&(importWatch.seen||Date.now()-importWatch.t0>900000))importWatch=null}   // it failed: stay, the message says why
   }catch(e){}
   setTimeout(tick,(snap&&(snap.busy||snap.prompt||(snap.studio&&snap.studio.job)))?400:1500);
 }

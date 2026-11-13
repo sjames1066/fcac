@@ -1748,6 +1748,7 @@ class UIMixin:
         self.tasks: dict[str, dict] = {}
         self.prompt: dict | None = None
         self.logo_version = 0
+        self.installs_done = 0
         self.updating = False
         self.ui = fcac_ui.UIServer(self, DATA_DIR / "ui-profile")
 
@@ -1872,6 +1873,7 @@ class UIMixin:
             "app_update": app_update(),
             "update_checked": int(getattr(self, "update_checked", 0) * 1000),
             "logo_v": self.logo_version,
+            "installs_done": self.installs_done,
             "prompt": {k: prompt[k] for k in ("id", "title", "text", "options")} if prompt else None,
         }
 
@@ -2589,6 +2591,8 @@ class UIMixin:
                         message = uninstall_pack(load_config(), icao)
                     self.set_status(message, notify=True)
                     self.logo_version += 1   # a new pack may have brought its logo: make the window ask for it again
+                    if kind == "install":
+                        self.installs_done += 1   # the window watches this to return to the Dashboard after an import
                 except AppError as exc:
                     self.set_status(str(exc), notify=True)
                 except Exception as exc:
