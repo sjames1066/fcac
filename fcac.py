@@ -928,7 +928,21 @@ def remove_voice(cfg: dict, icao: str, key: str) -> str:
     state.pop("last", None)
     save_state(state)
     log.info("Removed voice %s from %s (kept in backups)", key, icao)
+    if not list_voices(airline_folder(cfg, icao)):   # that was the last voice: nothing of the pack is left to keep
+        try:
+            return uninstall_pack(cfg, icao)
+        except AppError:
+            pass
     return f"Removed the {key} voice from {icao}"
+
+
+def _remove_library_folder(lib_dir: Path, icao: str) -> None:
+    """A folder with no sound files is simply deleted; one with recordings is moved to the backups, never lost."""
+    if any(lib_dir.rglob("*.ogg")):
+        BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(lib_dir), str(BACKUPS_DIR / f"{icao}-recordings-{time.strftime('%Y%m%d-%H%M%S')}"))
+    else:
+        shutil.rmtree(lib_dir)
 
 
 def uninstall_pack(cfg: dict, icao: str) -> str:
@@ -941,8 +955,7 @@ def uninstall_pack(cfg: dict, icao: str) -> str:
         if not lib_dir.is_dir():
             raise AppError(f"The {icao} pack is not installed.")
         try:
-            BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(lib_dir), str(BACKUPS_DIR / f"{icao}-recordings-{time.strftime('%Y%m%d-%H%M%S')}"))
+            _remove_library_folder(lib_dir, icao)
             shutil.rmtree(GENERIC_DIR / icao, ignore_errors=True)
         except OSError as exc:
             raise AppError(f"Could not remove {icao} (is MSFS using the files?): {exc}") from exc
@@ -973,6 +986,11 @@ def uninstall_pack(cfg: dict, icao: str) -> str:
         except OSError:
             pass
         shutil.rmtree(GENERIC_DIR / icao, ignore_errors=True)
+        # Whatever is left (a logo, voice.json, recordings added from Pack Studio) belongs to the one voice this pack was:
+        # take the pack out completely, so it doesn't stay in the list needing a second Uninstall. Several voices left
+        # means other voices of yours are there: those stay (remove them one by one).
+        if lib_dir.is_dir() and len(list_voices(lib_dir)) <= 1:
+            _remove_library_folder(lib_dir, icao)
     except OSError as exc:
         raise AppError(f"Could not uninstall {icao} (is MSFS using the files?): {exc}") from exc
     del state["installed"][icao]
