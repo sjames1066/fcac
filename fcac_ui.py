@@ -481,8 +481,8 @@ footer button{padding:7px 12px;font-weight:500;font-size:12.5px;color:var(--mute
 .sd-grid label.wide{grid-column:1/-1}
 .sd-grid input{width:100%;box-sizing:border-box}
 .sd-meta{color:var(--muted);font-size:12.5px;margin-top:12px;line-height:1.5}
-.prog{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
-.prog i{display:block;height:100%;background:var(--grad)}
+.ptrack{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
+.ptrack i{display:block;height:100%;background:var(--grad)}
 .keepopen{margin:14px 0 0;padding:12px 14px;border:1px solid rgba(240,200,60,.55);background:rgba(240,200,60,.09);border-radius:12px}
 .keepopen.slim{margin:12px 0 22px;padding:9px 38px 9px 14px;position:relative}
 .keepx{position:absolute;top:6px;right:8px;width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--faint);font-size:20px;line-height:1;cursor:pointer;border-radius:6px}
@@ -532,7 +532,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
 .slot .sc.custom::before{content:"script · ";color:var(--magenta);font-size:12px}
 #m-mic select{width:100%}
 #view-studio>.section-head:not(:first-child){margin-top:30px}
-.prog.wait i{width:40%!important;animation:slide 1.1s ease-in-out infinite alternate}
+.ptrack.wait i{width:40%!important;animation:slide 1.1s ease-in-out infinite alternate}
 @keyframes slide{from{margin-left:0}to{margin-left:60%}}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--line2);
        padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
@@ -732,7 +732,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <h3 id="q-t">No sound picked up</h3><p id="q-s"></p>
   <div class="row"><button id="q-close">Close</button><button class="primary" id="q-open">Open Audio settings</button></div>
 </div></div>
-<div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="prog"><i id="job-bar"></i></div></div></div>
+<div class="modal" id="m-job"><div class="dialog"><h3 id="job-t">Working...</h3><p id="job-s">Please wait - this can take a moment.</p><div class="ptrack"><i id="job-bar"></i></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1282,7 +1282,7 @@ function renderStudio(){
       $("#up-ok").onclick=async()=>{$("#m-up").classList.remove("show");const r=await studio("upgrade",pid(c));if(r.ok)toast("Renamed "+r.renamed+" clip"+(r.renamed==1?"":"s"))};$("#m-up").classList.add("show")};
     b.append(ub);root.append(b)}
   const pr=el("div",null);pr.style.margin="16px 2px";pr.append(el("div","small",c.done+" of "+c.total+" recorded or skipped"+(c.missing?" · "+c.missing+" required still to do":" · all required clips done")));
-  const bar=el("div","prog");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
+  const bar=el("div","ptrack");const fill=el("i");fill.style.width=Math.round(100*c.done/c.total)+"%";bar.append(fill);pr.append(bar);root.append(pr);
   const groups=[];c.rows.forEach(r=>{let g=groups.find(x=>x.name===r.group);if(!g){g={name:r.group,rows:[]};groups.push(g)}g.rows.push(r)});
   ["Airports","Aircraft","Boarding music","Bolt-ons"].forEach(n=>{if(!groups.find(x=>x.name===n))groups.push({name:n,rows:[]})});
   const order=["BoardingWelcome","Landing","Airports","Aircraft","Refuelling","Other announcements","Boarding music","Bolt-ons"];groups.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
