@@ -1165,19 +1165,18 @@ function slotRow(c,r){
   const act=el("div","act");
   const rec=el("button","rec",r.done?"● Re-record":"● Record");rec.onclick=()=>{if(recState&&recState.slot===r.id){recState.stop()}else startRec(r.id,rec)};
   if(r.music)rec.style.display="none";
-  const sc=el("button","sq");sc.title=r.custom?"Replace script (uploaded for this item)":"Upload Script";
-  sc.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>';
-  const sf2=el("input");sf2.type="file";sf2.accept=".txt,.md,text/plain";sf2.style.display="none";
-  sf2.onchange=async()=>{const f=sf2.files[0];if(!f)return;if(f.size>20000){toast("That script is too long for one clip");return}await studio("script",{...pid(c),slot:r.id,text:await f.text()});toast("Script added to "+r.label)};
-  sc.onclick=()=>sf2.click();
   const up=el("button",null,"Upload");const f=el("input");f.type="file";f.accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac";f.style.display="none";
-  f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,sc,sf2,f);
+  f.onchange=()=>{if(f.files[0])upload(r.id,f.files[0],f.files[0].name)};up.onclick=()=>f.click();act.append(rec,up,f);
+  if(r.done){const xp=el("button","sq");xp.title="Export this recording as a single .ogg file, to send for testing or tweaking";
+    xp.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+    xp.onclick=()=>{const q=new URLSearchParams({icao:c.icao,voice:c.voice,slot:r.id,t:TOKEN});const a=document.createElement("a");a.href="/studio/audio?"+q;
+      a.download=(c.icao+"_"+c.voice+"_"+r.id.replace(/[\\/:*?"<>|]+/g,"_").replace(/\.ogg$/i,"")).replace(/\s+/g,"_")+".ogg";document.body.appendChild(a);a.click();a.remove();toast("Exported "+r.label)};act.append(xp)}
   if(!r.done&&!r.music){const sk=el("button","ghost",r.skipped?"Unskip":"Skip");sk.title=r.skipped?"Put this back on the checklist":"Not recording this one: counts as done on the checklist";sk.onclick=()=>studio("skip",{...pid(c),slot:r.id,skip:!r.skipped});act.append(sk)}
   const isAc=r.folder==="aircraft",isAp=r.folder==="airports"||isAc,apCode=r.folder==="airports"?r.id.slice(("airports/"+c.icao+"_").length):r.label;
   if(r.done||isAp){const p=el("button","pp","▶");p.dataset.id=r.id;p.title="Play";p.onclick=()=>togglePlay(c,r.id);const sp2=el("button","stp","⏹");sp2.dataset.id=r.id;sp2.title="Stop";sp2.style.display="none";sp2.onclick=stopPlay;const x=el("button","danger","✕");x.title=isAp?(isAc?"Remove this aircraft":"Remove this airport")+(r.done?" and its recording":""):"Remove";let armT=null;x.onclick=()=>{if(!x.classList.contains("arm")){x.classList.add("arm");x.textContent="Delete?";x.title="Click again to delete";armT=setTimeout(()=>{x.classList.remove("arm");x.textContent="✕";x.title="Remove"},3500);return}clearTimeout(armT);isAp?studio(isAc?"aircraft":"airport",{...pid(c),code:apCode,remove:true}):studio("delete",{...pid(c),slot:r.id})};if(r.done)act.append(p,sp2);act.append(x)}
   if(r.variantable){const av=el("button","ghost","+ Variation");av.title="Record another take of this announcement. FCAC picks one at random each flight.";av.onclick=async()=>{openGroups.add(r.group);await studio("variant",{...pid(c),base:r.stem});studioSig="";renderStudio()};act.append(av)}
   if(r.variant_of){const xv=el("button","danger","✕");xv.title="Remove this variation";let armV=null;xv.onclick=()=>{if(!xv.classList.contains("arm")){xv.classList.add("arm");xv.textContent="Delete?";armV=setTimeout(()=>{xv.classList.remove("arm");xv.textContent="✕"},3500);return}clearTimeout(armV);studio("variant",{...pid(c),base:r.variant_of,n:r.variant_n,remove:true})};act.append(xv)}
-  if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,sf2.nextSibling)}
+  if(r.custom){const cs=el("button","sq ghost","✕");cs.title="Remove this item's script";cs.style.fontSize="11px";cs.onclick=()=>studio("script",{...pid(c),slot:r.id,text:""});act.insertBefore(cs,up.nextSibling)}
   d.append(act);return d;
 }
 function renderStudio(){
