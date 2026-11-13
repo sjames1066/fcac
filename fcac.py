@@ -70,6 +70,8 @@ DATA_DIR = _data_dir()
 GENERIC_DIR = DATA_DIR / "generic"    # untouched copy of an airline's generic announcements (saved before FCAC changes them)
 BACKUPS_DIR = DATA_DIR / "backups"    # packs that were already in the Fenix folder before we installed ours
 STATE_PATH = DATA_DIR / "state.json"
+TEST_DIR = DATA_DIR / "test"            # scratch builds for the Test tab (never touches the Fenix folder or the real state)
+_STATE_LOCAL = threading.local()        # a thread can point FCAC's state at another file (the Test tab's scratch builds)
 STUDIO_DIR = DATA_DIR / "studio"        # Pack Studio projects (recordings, processed clips, exports)
 LOG_PATH = DATA_DIR / "announcer.log"
 for _d in (DATA_DIR, GENERIC_DIR, BACKUPS_DIR):
@@ -357,14 +359,14 @@ def save_aliases(aliases: dict[str, str]) -> None:
 
 def load_state() -> dict:
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        return json.loads((getattr(_STATE_LOCAL, "path", None) or STATE_PATH).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
 
 def save_state(state: dict) -> None:
     try:
-        STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        (getattr(_STATE_LOCAL, "path", None) or STATE_PATH).write_text(json.dumps(state, indent=2), encoding="utf-8")
     except OSError:
         log.exception("Could not save state")
 
@@ -1310,7 +1312,8 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
 
 
 def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, variant: str | None = None,
-                      arrival: str | None = None, only: set[str] | None = None, voice: str | None = None) -> str:
+                      arrival: str | None = None, only: set[str] | None = None, voice: str | None = None,
+                      target_dir: Path | None = None) -> str:
     """Apply a destination. If several recordings exist for it (terminals etc.) `choose` is asked which to use
     (`variant` skips the question)."""
     airline = check_airline_code(airline)  # the airline in the Fenix livery, e.g. SHT
@@ -1321,7 +1324,7 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
     log.info("Applying %s to %s: recordings %s, voice %s, planned landing time %s%s", airline, dest_icao, source,
              voice_name or "-", arrival or "none", f", only {sorted(only)}" if only else "")
     boost = boost_percent(cfg)
-    fenix_dir = airline_packs_dir(cfg) / airline
+    fenix_dir = target_dir or airline_packs_dir(cfg) / airline   # target_dir: a scratch folder (the Test tab)
     if source == airline or not has_ogg(lib_dir / MAIN_FOLDER):
         pristine = generic_source(cfg, airline, fenix_dir)
     else:
@@ -1930,6 +1933,96 @@ class UIMixin:
         """Closing the window never quits FCAC: it keeps running in the tray (it has to, to build the landing announcement)."""
 
     # things the page can ask for
+    # ------------------------------------------------------------------ Test tab
+    TEST_LABELS = {stem: label for stem, label, _ in fcac_studio.GENERAL}
+
+    def test_options(self) -> dict:
+        """Every airline in your library that has a voice: its voices and the airports recorded for them."""
+        cfg = load_config()
+        root = airlines_root(cfg)
+        installed = load_state().get("installed", {})
+        airlines = []
+        for folder in sorted(root.iterdir()) if root.is_dir() else []:
+            if not folder.is_dir():
+                continue
+            code = folder.name.upper()
+            voices = list_voices(folder)
+            if not voices or not re.fullmatch(r"[A-Z0-9]{2,4}", code):
+                continue
+            ports: dict[str, set[str]] = {}
+            for key, vdir in voices.items():
+                for f in list((vdir / AIRPORTS_FOLDER).glob("*.ogg")) if (vdir / AIRPORTS_FOLDER).is_dir() else []:
+                    parts = f.stem.split("_")
+                    if len(parts) >= 2 and parts[0].upper() == code:
+                        ports.setdefault(key, set()).add(parts[1].upper())
+            airlines.append({"icao": code, "name": airline_display_name(cfg, code, installed.get(code), ""),
+                             "voices": [{"key": k, "name": voice_info(p, k)["name"], "airports": sorted(ports.get(k, []))}
+                                        for k, p in voices.items()]})
+        return {"airlines": airlines}
+
+    def test_build(self, data: dict) -> dict:
+        """Build the whole set of PAs for one airline / voice / destination in a scratch folder, with the real pipeline."""
+        try:
+            icao = check_airline_code(str(data.get("icao", "")))
+            dest = str(data.get("dest", "")).upper().strip()
+            if not re.fullmatch(r"[A-Z0-9]{3,4}", dest):
+                return {"error": "Choose a destination airport."}
+            arrival = str(data.get("arrival", "")).strip() or None
+            if arrival and not re.fullmatch(r"\d{1,2}:\d{2}", arrival):
+                return {"error": "Local time must look like 14:35."}
+            cfg = load_config()
+            voices = list_voices(airline_folder(cfg, icao))
+            voice = str(data.get("voice", ""))
+            if voice not in voices:
+                return {"error": "That voice is not in your library."}
+        except AppError as exc:
+            return {"error": str(exc)}
+        key = hashlib.sha1(f"{icao}|{voice}|{dest}|{arrival}|{boost_percent(cfg)}|{cfg.get('join_style')}".encode()).hexdigest()[:12]
+        sandbox = TEST_DIR / key
+        pack = sandbox / "pack"
+        message = ""
+        if data.get("rebuild") or not pack.is_dir():
+            shutil.rmtree(sandbox, ignore_errors=True)
+            sandbox.mkdir(parents=True)
+            _STATE_LOCAL.path = sandbox / "state.json"   # roll variations / bolt-ons here, not in the real state
+            try:
+                message = apply_destination(cfg, icao, dest, variant=STANDARD, arrival=arrival, voice=voice, target_dir=pack)
+            except AppError as exc:
+                shutil.rmtree(sandbox, ignore_errors=True)
+                return {"error": str(exc)}
+            finally:
+                _STATE_LOCAL.path = None
+            TEST_DIR.mkdir(parents=True, exist_ok=True)
+            old = sorted((p for p in TEST_DIR.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)[:-10]
+            for p in old:
+                shutil.rmtree(p, ignore_errors=True)
+        triggers = []
+        for f in sorted(pack.glob("*.ogg"), key=lambda p: p.name.lower()):
+            stem = f.stem
+            base = stem.split("[")[0]
+            tags = re.findall(r"\[(.*?)\]", stem)
+            label = self.TEST_LABELS.get(stem) or self.TEST_LABELS.get(base) or re.sub(r"(?<=[a-z])(?=[A-Z])", " ", base)
+            if stem not in self.TEST_LABELS and tags:
+                label += " (" + ", ".join(tags) + ")"
+            group = "Welcome aboard" if base == "BoardingWelcome" else "Landing" if base == "AfterLanding" else "Other announcements"
+            if base == "BoardingWelcome" and tags:
+                label = "Welcome aboard - " + ", ".join(tags).lower()
+            elif base == "BoardingWelcome":
+                label = "Welcome aboard"
+            elif base == "AfterLanding":
+                label = "Landing"
+            triggers.append({"file": f.name, "label": label, "group": group})
+        return {"ok": True, "key": key, "message": message, "triggers": triggers}
+
+    def test_audio(self, key: str, file: str) -> bytes | None:
+        if not re.fullmatch(r"[0-9a-f]{12}", key) or file != Path(file).name or not file.lower().endswith(".ogg"):
+            return None
+        path = TEST_DIR / key / "pack" / file
+        try:
+            return path.read_bytes() if path.is_file() else None
+        except OSError:
+            return None
+
     def ui_action(self, name: str, data: dict) -> dict:
         if name == "install":
             wanted = str(data.get("id") or data.get("icao", "")).strip().lower()
@@ -2082,6 +2175,10 @@ class UIMixin:
             return self.studio_action(name[7:], data)
         elif name == "open":
             self._open_folder(str(data.get("what", "")))
+        elif name == "test_options":
+            return {"ok": True, **self.test_options()}
+        elif name == "test_build":
+            return self.test_build(data)
         elif name == "check_update":   # re-read catalog.json now: the newest FCAC and the pack list
             try:
                 self.catalog = load_catalog(load_config())
@@ -2882,6 +2979,7 @@ def main() -> int:
     if not cli:
         if not _claim_single_instance(show=not args.background):
             return 0
+        shutil.rmtree(TEST_DIR, ignore_errors=True)   # scratch builds from the Test tab last one run
         try:  # startup entries written by older versions had no --background: rewrite them so MSFS starts FCAC quietly
             mode = current_autostart()
             if mode != "off":

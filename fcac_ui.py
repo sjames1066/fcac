@@ -183,6 +183,13 @@ class UIServer:
                             self._json(404, {"error": "not found"})
                         else:
                             self._send(200, data, "image/png")
+                    elif path == "/test/audio":  # a PA built by the Test tab
+                        q = parse_qs(parsed.query)
+                        data = server.backend.test_audio(q.get("key", [""])[0], q.get("file", [""])[0])
+                        if data is None:
+                            self._json(404, {"error": "not found"})
+                        else:
+                            self._send(200, data, "audio/ogg")
                     elif path == "/studio/audio":  # a processed clip, for the play button
                         q = parse_qs(parsed.query)
                         data = server.backend.studio_audio(q.get("icao", [""])[0], q.get("voice", [""])[0], q.get("slot", [""])[0])
@@ -381,6 +388,11 @@ button.danger:hover{border-color:var(--err);color:var(--err)}
 input[type=text]{font:500 14px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--line2);
        border-radius:11px;padding:10px 13px;width:100%;outline:none}
 input[type=text]:focus{border-color:var(--magenta)}
+.tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint)}
+.trow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.trow button{width:34px;height:34px;border-radius:50%;padding:0}
+.trow .tn{font-size:13.5px}.trow .tf{margin-left:auto;color:var(--faint);font-size:11.5px}
 .section-head{display:flex;align-items:baseline;gap:10px;margin:0 2px 12px}
 .section-head h2{margin:0;font-size:15px;font-weight:600}
 .section-head span{color:var(--faint);font-size:12.5px}
@@ -516,7 +528,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     <button class="cog" id="settings" title="Settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
   </header>
 
-  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button></nav>
+  <nav class="tabs"><button id="tab-main" class="on">Dashboard</button><button id="tab-studio">Pack Studio</button><button id="tab-dl">Download Packs</button><button id="tab-test">Test</button></nav>
   <div id="view-main">
   <div class="card updbar" id="updbar" style="display:none"><div><b id="upd-t"></b><span id="upd-s"></span></div><button class="primary" id="upd-go">Download</button></div>
   <section class="card hero" id="hero"></section>
@@ -534,6 +546,17 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div id="view-dl" style="display:none">
     <div class="section-head"><h2>Download packs</h2><span id="dlsub"></span><span style="margin-left:auto;display:flex;gap:10px"><button class="ghost" id="refresh">Refresh list</button><button class="ghost" id="import-btn">Import a pack</button></span></div>
     <div class="packs" id="dlpacks"></div>
+  </div>
+  <div id="view-test" style="display:none">
+    <div class="section-head"><h2>Test your packs</h2><span id="t-sub">Builds the full set of PAs for a flight in a scratch folder, so nothing in the sim changes.</span></div>
+    <div class="card" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+      <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
+      <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
+      <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
+      <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"></label>
+      <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
+    </div>
+    <div id="t-list" style="margin-top:18px"></div>
   </div>
   <div id="view-studio" style="display:none"></div>
   <div class="support">Enjoying FCAC? <button class="kofi" data-open="kofi"><span>&#9829;</span> Buy me a Ko-fi</button></div>
@@ -934,9 +957,38 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 
 // ---------------------------------------------------------------- Pack Studio
 let view="main", studioSig="", recState=null, openGroups=new Set(["BoardingWelcome"]), playing=null;
-function setView(v){view=v;$("#view-main").style.display=v==="main"?"":"none";$("#view-studio").style.display=v==="studio"?"":"none";$("#view-dl").style.display=v==="dl"?"":"none";
-  $("#tab-main").classList.toggle("on",v==="main");$("#tab-studio").classList.toggle("on",v==="studio");$("#tab-dl").classList.toggle("on",v==="dl");if(v==="studio"){studioSig="";renderStudio()}}
-$("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl");
+function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
+  if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
+let tOpts=null,tKey="",tAudio=null,tPlaying=null;
+async function testInit(){
+  if(!tOpts){const r=await api("test_options"); if(!r.ok)return; tOpts=r.airlines;
+    const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
+    if(!tOpts.length){$("#t-list").textContent="No packs with a voice in your library yet.";return}
+    a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
+    $("#t-time").onchange=()=>testBuild(false); $("#t-build").onclick=()=>testBuild(true); testFillVoices()}
+}
+function testFillVoices(){const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
+  for(const y of x.voices){const o=el("option",null,y.name);o.value=y.key;v.appendChild(o)} testFillDest()}
+function testFillDest(){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=x.voices.find(v=>v.key===$("#t-voice").value),d=$("#t-dest"); d.innerHTML="";
+  for(const p of y.airports){const o=el("option",null,p);o.value=p;d.appendChild(o)}
+  if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);$("#t-list").textContent="This voice has no airport recordings, so there is nothing to build yet.";return}
+  testBuild(false)}
+function testStop(){if(tAudio){tAudio.pause();tAudio=null} if(tPlaying){tPlaying.textContent="\u25B6";tPlaying=null}}
+async function testBuild(rebuild){
+  testStop(); const L=$("#t-list"); L.textContent="Building..."; 
+  const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,rebuild:rebuild});
+  if(!r.ok){L.textContent=r.error||"Could not build.";return}
+  tKey=r.key; L.innerHTML=""; const groups={};
+  for(const t of r.triggers)(groups[t.group]=groups[t.group]||[]).push(t);
+  for(const g of ["Welcome aboard","Landing","Other announcements"]){ if(!groups[g])continue;
+    L.appendChild(el("div","section-head")).appendChild(el("h2",null,g));
+    const c=el("div","card"); for(const t of groups[g]){const row=el("div","trow"),b=el("button","ghost","\u25B6");
+      b.onclick=()=>{ if(tPlaying===b){testStop();return} testStop(); tAudio=new Audio("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file));
+        tPlaying=b;b.textContent="\u25A0"; tAudio.onended=testStop; tAudio.play().catch(()=>{toast("Could not play that clip");testStop()})};
+      row.append(b,el("span","tn",t.label),el("span","tf",t.file)); c.appendChild(row)}
+    L.appendChild(c)}
+}
+$("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl"); $("#tab-test").onclick=()=>setView("test");
 
 function field(label,key,cur,ph,wide){const l=el("label",wide?"wide":"",label);const i=el("input");i.type="text";i.value=cur[key]||"";i.placeholder=ph||"";i.dataset.k=key;l.append(i);return l}
 function pid(c){return {icao:c.icao,voice:c.voice}}
