@@ -115,21 +115,29 @@ def _fade(data: np.ndarray, rate: int, ms: int = 6) -> np.ndarray:
     return data
 
 
-def _trim_flow(data: np.ndarray, rate: int, lead_ms: int = 40, tail_ms: int = 70, rel_db: float = -18.0) -> np.ndarray:
+def _trim_flow(data: np.ndarray, rate: int, lead_ms: int = 50, tail_ms: int = 110, lead_db: float = -24.0,
+               tail_db: float = -34.0, keep_end: bool = False) -> np.ndarray:
     """Cut a clip tight to its speech: dead air, mic clicks and breaths before the first word and after the last are
-    dropped. Speech starts where the smoothed level first holds at `rel_db` below the clip's normal speech level for
-    20 ms (and ends likewise); `lead_ms` / `tail_ms` are kept either side so soft starts and fading ends stay natural."""
+    dropped. Speech starts where the smoothed level first holds at `lead_db` below the clip's normal speech level for
+    20 ms, and ends where it last holds at `tail_db` (a lower bar: the last syllable of a name often fades out softly
+    or ends in a quiet "s" / "t", which must not be clipped). `lead_ms` / `tail_ms` are kept either side so soft starts
+    and fading ends stay natural. keep_end leaves the end of the clip alone (the last piece of an announcement)."""
     mono = np.abs(data).max(axis=1)
     win = max(1, int(rate * 0.01))
     env = np.sqrt(np.convolve(mono ** 2, np.ones(win) / win, mode="same"))
-    threshold = max(SILENCE, float(np.percentile(env, 95)) * 10 ** (rel_db / 20))
+    speech = float(np.percentile(env, 95))
     hold = max(1, int(rate * 0.02))
-    held = np.convolve((env > threshold).astype("float32"), np.ones(hold, dtype="float32"), mode="valid") >= hold
-    starts = np.flatnonzero(held)
-    if len(starts) == 0:
+
+    def held_at(db: float):
+        threshold = max(SILENCE, speech * 10 ** (db / 20))
+        return np.flatnonzero(np.convolve((env > threshold).astype("float32"), np.ones(hold, dtype="float32"), mode="valid") >= hold)
+
+    starts, ends = held_at(lead_db), held_at(tail_db)
+    if len(starts) == 0 or len(ends) == 0:
         return data
-    first, last = int(starts[0]), int(starts[-1]) + hold
-    return data[max(0, first - int(rate * lead_ms / 1000)): last + int(rate * tail_ms / 1000)]
+    first, last = int(starts[0]), int(ends[-1]) + hold
+    end = len(data) if keep_end else min(len(data), last + int(rate * tail_ms / 1000))
+    return data[max(0, first - int(rate * lead_ms / 1000)): end]
 
 
 def _crossfade(a: np.ndarray, b: np.ndarray, rate: int, overlap_ms: int) -> np.ndarray:
@@ -154,7 +162,8 @@ def join(paths: list[Path], out: Path, pause_ms: int = 60, flow: bool = False, o
     channels = max(d.shape[1] for d, _ in clips)
     out.parent.mkdir(parents=True, exist_ok=True)
     if flow:
-        pieces = [_trim_flow(_channels(_resample(data, src_rate, rate), channels), rate) for data, src_rate in clips]
+        pieces = [_trim_flow(_channels(_resample(data, src_rate, rate), channels), rate, keep_end=(i == len(clips) - 1))
+                  for i, (data, src_rate) in enumerate(clips)]
         joined = pieces[0]
         for piece in pieces[1:]:
             joined = _crossfade(joined, piece, rate, overlap_ms)
