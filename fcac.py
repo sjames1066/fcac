@@ -105,7 +105,7 @@ DEFAULT_CONFIG = {
     "poll_interval_seconds": 60,
     "notifications": True,
     "minimize_to_tray": False,        # minimizing the FCAC window hides it in the tray instead of the taskbar
-    "on_close": "tray",               # closing the FCAC window: "tray" (keep running) or "quit"
+    "close_to_tray": False,           # closing the FCAC window: False = FCAC quits, True = it keeps running in the tray
     "pa_boost": 30,                   # percent louder than the recordings when FCAC puts a PA into the Fenix folder (0 = untouched)
     "extra_chance": 25,               # percent of flights that get one random bolt-on from the extra folder (0 = never)
     "announce_local_time": True,      # say "where the local time is ..." in the landing PA (needs the parts pieces)
@@ -1861,7 +1861,7 @@ class UIMixin:
             "welcome_info": self._welcome_info(cfg, {}),
             "studio": self.studio_snapshot(cfg),
             "settings": {
-                "on_close": cfg.get("on_close", "tray"),
+                "close_to_tray": bool(cfg.get("close_to_tray", False)),
                 "minimize_to_tray": bool(cfg.get("minimize_to_tray", False)),
                 "local_time": bool(cfg.get("announce_local_time", True)),
                 "extra_chance": int(cfg.get("extra_chance", 25)),
@@ -1991,7 +1991,21 @@ class UIMixin:
             window.terminate()
 
     def window_closed(self) -> None:
-        """Closing the window never quits FCAC: it keeps running in the tray (it has to, to build the landing announcement)."""
+        """The page says it is going away. Unless "keep running in the tray" is on in Settings, closing the window quits
+        FCAC. A page reload also says this, so only quit if the window's browser process has really ended."""
+        try:
+            if load_config().get("close_to_tray"):
+                return
+        except AppError:
+            return
+
+        def check() -> None:
+            window = self.ui.window
+            if window is not None and window.poll() is not None:
+                log.info("The window was closed: quitting (Settings: keep running in the tray is off)")
+                self.quit()
+
+        threading.Timer(1.5, check).start()
 
     # things the page can ask for
     # ------------------------------------------------------------------ Test tab
@@ -2183,14 +2197,13 @@ class UIMixin:
             self.set_status(f"{alias} {'now uses ' + aliases[alias] + ' recordings' if name == 'alias_add' else 'alias removed'}")
             self.wake.set()
         elif name == "settings":
-            on_close = data.get("on_close")
             mode = data.get("autostart")
-            if on_close not in ("tray", "quit") or mode not in ("off", "windows", "msfs"):
+            if mode not in ("off", "windows", "msfs"):
                 return {"error": "Unknown setting."}
             try:
                 if mode != current_autostart():
                     apply_autostart(mode)
-                set_config_value("on_close", on_close)
+                set_config_value("close_to_tray", bool(data.get("close_to_tray")))
                 set_config_value("minimize_to_tray", bool(data.get("minimize_to_tray")))
                 set_config_value("quit_with_msfs", bool(data.get("quit_with_msfs", True)))
                 chance = int(data.get("extra_chance", 25))
@@ -2665,7 +2678,7 @@ class TrayApp(UIMixin):
             item(lambda _: self.status_text(), None, enabled=False),
             menu.SEPARATOR,
             item("Update from SimBrief now", lambda: self.run_task("Updating", self.do_update)),
-            item(lambda _: f"\u2714  {ACTIVE_BOLD}" if self.auto else f"{ACTIVE_BOLD}  (off)", self.toggle_auto),   # "✔  Active" in bold letters
+            item(lambda _: f"\u2714  {ACTIVE_BOLD}" if self.auto else "Off", self.toggle_auto),   # "✔  Active" in bold letters; plain "Off" when switched off
             menu.SEPARATOR,
             item("View log", lambda: open_path(LOG_PATH)),
             menu.SEPARATOR,

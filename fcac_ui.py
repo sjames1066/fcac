@@ -666,6 +666,11 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <button id="s-check">Check for updates</button><button class="primary" id="s-upd" style="display:none">Update now</button></div></div>
   <div class="setting"><div class="label">SimBrief username</div>
     <input type="text" id="s-name" placeholder="e.g. captainsmith123" autocomplete="off" spellcheck="false"></div>
+  <div class="setting"><div class="label">When I close this window</div>
+    <div class="radios" id="s-close">
+      <div class="radio" data-v="no"><b>Close FCAC</b><span>FCAC quits. It only builds the landing announcement while it is running, so keep it open during a flight</span></div>
+      <div class="radio" data-v="yes"><b>Keep it running in the tray</b><span>The window closes but FCAC carries on; double-click the tray icon to open it again</span></div>
+    </div></div>
   <div class="setting"><div class="label">When I minimize this window</div>
     <div class="radios" id="s-min">
       <div class="radio" data-v="no"><b>Minimize normally</b><span>It stays in the taskbar</span></div>
@@ -951,14 +956,14 @@ function renderPrompt(){
 $("#c-ok").onclick=async()=>{await api("answer",{id:promptId,choice:selected,remember:$("#c-remember").checked});$("#m-choice").classList.remove("show");promptId="done:"+promptId};
 
 function openName(){ $("#n-input").value=snap.username||""; $("#m-name").classList.add("show"); setTimeout(()=>$("#n-input").focus(),50) }
-let cfg={on_close:"tray",autostart:"off",min:"no",time:"yes",extra:"25"};
+let cfg={close:"no",autostart:"off",min:"no",time:"yes",extra:"25"};
 function pickRadio(id,val){document.querySelectorAll("#"+id+" .radio").forEach(r=>r.classList.toggle("sel",r.dataset.v===val))}
 document.querySelectorAll(".radios").forEach(g=>g.querySelectorAll(".radio").forEach(r=>r.onclick=()=>{
-  cfg[g.id==="s-close"?"on_close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":g.id==="s-flow"?"flow":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
+  cfg[g.id==="s-close"?"close":g.id==="s-min"?"min":g.id==="s-time"?"time":g.id==="s-extra"?"extra":g.id==="s-boost"?"boost":g.id==="s-flow"?"flow":"autostart"]=r.dataset.v; pickRadio(g.id,r.dataset.v); $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none"}));
 function openSettings(){
-  const s=snap.settings||{}; cfg={on_close:"tray",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost),flow:s.join_style==="pauses"?"pauses":"flow"};
+  const s=snap.settings||{}; cfg={close:s.close_to_tray?"yes":"no",autostart:s.autostart||"off",min:s.minimize_to_tray?"yes":"no",time:s.local_time===false?"no":"yes",extra:String(s.extra_chance===undefined?25:s.extra_chance),boost:String(s.pa_boost===undefined?30:s.pa_boost),flow:s.join_style==="pauses"?"pauses":"flow"};
   $("#s-name").value=snap.username||""; $("#s-quit").checked=s.quit_with_msfs!==false;
-  pickRadio("s-start",cfg.autostart); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
+  pickRadio("s-start",cfg.autostart); pickRadio("s-close",cfg.close); pickRadio("s-min",cfg.min); pickRadio("s-time",cfg.time); pickRadio("s-extra",cfg.extra);pickRadio("s-boost",cfg.boost);pickRadio("s-flow",cfg.flow);
   $("#s-quit-row").style.display=cfg.autostart==="msfs"?"flex":"none";
   renderSetUpd();$("#m-settings").classList.add("show");
 }
@@ -973,7 +978,7 @@ $("#s-cancel").onclick=()=>$("#m-settings").classList.remove("show");
 $("#s-save").onclick=async()=>{
   const name=$("#s-name").value.trim();
   if(name&&name!==(snap.username||"")){const r=await api("username",{name}); if(r.error)return}
-  const r=await api("settings",{on_close:cfg.on_close,autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked});
+  const r=await api("settings",{close_to_tray:cfg.close==="yes",autostart:cfg.autostart,minimize_to_tray:cfg.min==="yes",local_time:cfg.time==="yes",extra_chance:parseInt(cfg.extra,10),pa_boost:parseInt(cfg.boost,10),join_style:cfg.flow,quit_with_msfs:$("#s-quit").checked});
   if(!r.error){$("#m-settings").classList.remove("show");toast("Settings saved")}
 };
 let minSent=false;
