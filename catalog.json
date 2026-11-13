@@ -4,7 +4,7 @@
     "url": "https://github.com/sjames1066/fcac",
     "notes": "Paste a list of airports in Pack Studio; installer and folder build",
     "installer": "https://github.com/sjames1066/fcac/releases/download/v1.0.7/FCAC-Setup-1.0.7.exe",
-    "sha256": "d3e05ed4f2fce09828552b977afdb8b777485bdc72bab1ae23da7d7185653588"
+    "sha256": "7e3a15899f646ea2bd3255b0defeb08f44ad83f36f768d6fc348061c927428b8"
   },
   "packs": [
     {
