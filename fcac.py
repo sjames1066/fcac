@@ -1302,6 +1302,19 @@ def welcome_pieces(lib_dir: Path, clip: Path, tag: str, tail: list[Path] | None 
     return [*pieces, *(tail or [])] if all(pieces) else None
 
 
+def round_clock(arrival: str) -> str:
+    """The PAs only have minutes in steps of five (Min_00, Min_05 ... Min_55): 10:01-02 -> 10:00, 10:03-04 -> 10:05,
+    10:06-07 -> 10:05, 10:08-09 -> 10:10, and 10:58 -> 11:00 (the hour moves on, wrapping at midnight)."""
+    try:
+        hour, minute = (int(x) for x in arrival.split(":"))
+    except ValueError:
+        return arrival
+    minute = int(round(minute / 5.0 + 1e-9)) * 5   # 2 -> 0, 3 -> 5 (the half-way point goes up)
+    if minute >= 60:
+        minute, hour = 0, (hour + 1) % 24
+    return f"{hour:02d}:{minute:02d}"
+
+
 def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bool = True,
                    lead: Path | None = None) -> tuple[list[Path] | None, str]:
     """[Welcome to] + <destination> + "local time is HH:MM" + rest of the landing PA. `lead` is the "welcome to" clip when
@@ -1314,6 +1327,7 @@ def landing_pieces(lib_dir: Path, clip: Path, arrival: str | None, want_time: bo
     if not want_time:
         pass  # switched off in Settings
     elif arrival:
+        arrival = round_clock(arrival)   # the spoken time is to the nearest five minutes
         hour, minute = arrival.split(":")
         twelve = int(hour) % 12 or 12  # PAs use the 12-hour clock: 14:35 -> "two thirty-five"
         needed = [part_file(lib_dir, f"Hour_{twelve:02d}") or part_file(lib_dir, f"Hour_{hour}")]

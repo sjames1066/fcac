@@ -574,7 +574,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
       <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
-      <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"></label>
+      <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken" style="min-height:14px"></span></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
@@ -1008,7 +1008,8 @@ async function testInit(){
   const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
   if(!tOpts.length){$("#t-voice").innerHTML="";$("#t-dest").innerHTML="";tMsg("No pack in your library has a recorded airport yet. Import a pack (Download Packs tab) or record one in Pack Studio and use \"Use in FCAC now\".");return}
   a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
-  $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; testBuild(false)};
+  $("#t-time").onchange=()=>{const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/); if(m&&+m[1]<24&&+m[2]<60)$("#t-time").value=m[1].padStart(2,"0")+":"+m[2]; tSpoken(); testBuild(false)};
+  $("#t-time").oninput=tSpoken;
   $("#t-build").onclick=()=>testBuild(true);
   $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
   $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
@@ -1033,6 +1034,10 @@ function testMark(){tBar();tRows.forEach((r,i)=>{r.row.classList.toggle("now",i=
   for(const id of ["#t-skip","#t-stop"])$(id).style.display=tIdx>=0?"":"none";
   $("#t-now").textContent=tIdx>=0?(tPaused?"Paused ":"Playing ")+(tIdx+1)+" of "+tRows.length+": "+tRows[tIdx].label:""}
 function testStop(){tPlaylist=false;tPaused=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} if(tUrl){URL.revokeObjectURL(tUrl);tUrl=null} tIdx=-1; testMark()}
+function tSpoken(){ // the PAs speak minutes in steps of five: show what will actually be said
+  const m=$("#t-time").value.trim().match(/^(\d{1,2})[:.]?(\d{2})$/),e=$("#t-spoken"); if(!m||+m[1]>23||+m[2]>59){e.textContent="";return}
+  let h=+m[1],n=Math.round(+m[2]/5+1e-9)*5; if(n>=60){n=0;h=(h+1)%24}
+  const t=String(h).padStart(2,"0")+":"+String(n).padStart(2,"0"); e.textContent=(+m[2]%5)?"spoken as "+t:""}
 function tFmt(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
 let tDrag=false,tUrl=null;
 function tBar(){const a=tAudio,on=!!a&&tIdx>=0;$("#t-bar").style.display=on?"flex":"none"; if(!on)return;
