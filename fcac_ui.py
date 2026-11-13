@@ -393,6 +393,8 @@ input[type=text]:focus{border-color:var(--magenta)}
 #t-all.running{background:var(--surface2);border-color:var(--line2);box-shadow:none}
 #t-all:disabled{opacity:.5}
 #t-now{color:var(--text);font-size:14px}
+.tt{font:600 12.5px 'Inter',sans-serif;color:var(--faint);min-width:38px;font-variant-numeric:tabular-nums}
+#t-seek{accent-color:var(--magenta);cursor:pointer;height:6px}
 .tmsg{padding:18px 4px;color:var(--faint);font-size:14px}
 .trow.now{background:rgba(206,58,128,.14)}.trow.now .tn{font-weight:600}
 .trow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line)}
@@ -564,6 +566,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
       <button class="primary" id="t-all">&#9654;  Test All</button><button class="ghost" id="t-skip" style="display:none;padding:14px 22px">⏭  Skip</button><button class="ghost" id="t-stop" style="display:none;padding:14px 22px">■  Stop</button><span id="t-now"></span>
+    </div>
+    <div id="t-bar" style="display:none;align-items:center;gap:12px;margin-top:14px">
+      <span id="t-cur" class="tt">0:00</span><input type="range" id="t-seek" min="0" max="1000" value="0" step="1" style="flex:1"><span id="t-dur" class="tt">0:00</span>
     </div>
     <div id="t-list" style="margin-top:18px"></div>
   </div>
@@ -986,6 +991,8 @@ async function testInit(){
   $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
   $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
   $("#t-stop").onclick=testStop;
+  const sk=$("#t-seek"); sk.oninput=()=>{tDrag=true;const a=tAudio;if(a&&isFinite(a.duration))$("#t-cur").textContent=tFmt(sk.value/1000*a.duration)};
+  sk.onchange=()=>{const a=tAudio;if(a&&isFinite(a.duration))a.currentTime=sk.value/1000*a.duration;tDrag=false;tBar()};
   if([...a.options].some(o=>o.value===keep.air))a.value=keep.air;
   testFillVoices(keep);
 }
@@ -998,20 +1005,26 @@ function testFillDest(keep){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=
   if(keep&&keep.dest&&[...d.options].some(o=>o.value===keep.dest))d.value=keep.dest;
   if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);tMsg("This voice has no airport recordings, so there is nothing to build yet.");return}
   testBuild(false)}
-function testMark(){tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
+function testMark(){tBar();tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
   $("#t-all").textContent=tPlaylist?(tPaused?"▶  Resume":"❚❚  Pause"):"▶  Test All";
   $("#t-all").classList.toggle("running",tPlaylist);
   for(const id of ["#t-skip","#t-stop"])$(id).style.display=tIdx>=0?"":"none";
   $("#t-now").textContent=tIdx>=0?(tPaused?"Paused ":"Playing ")+(tIdx+1)+" of "+tRows.length+": "+tRows[tIdx].label:""}
-function testStop(){tPlaylist=false;tPaused=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} tIdx=-1; testMark()}
+function testStop(){tPlaylist=false;tPaused=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} if(tUrl){URL.revokeObjectURL(tUrl);tUrl=null} tIdx=-1; testMark()}
+function tFmt(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+let tDrag=false,tUrl=null;
+function tBar(){const a=tAudio,on=!!a&&tIdx>=0;$("#t-bar").style.display=on?"flex":"none"; if(!on)return;
+  const d=isFinite(a.duration)?a.duration:0; $("#t-cur").textContent=tFmt(a.currentTime); $("#t-dur").textContent=tFmt(d);
+  if(!tDrag)$("#t-seek").value=d?Math.round(a.currentTime/d*1000):0}
 function testPlay(i){ // play one clip; in playlist mode move on to the next when it ends
-  if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null}
+  if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} if(tUrl){URL.revokeObjectURL(tUrl);tUrl=null}
   if(i<0||i>=tRows.length){const was=tPlaylist;testStop(); if(was)toast("Test finished"); return}
-  tIdx=i; tPaused=false; const t=tRows[i];
-  tAudio=new Audio("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file));
-  const a=tAudio; a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
+  tIdx=i; tPaused=false; const t=tRows[i], a=new Audio(); tAudio=a; testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
+  a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
   a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
-  a.play().catch(()=>{}); testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
+  a.ontimeupdate=a.ondurationchange=a.onloadedmetadata=()=>{if(tAudio===a)tBar()};
+  fetch("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file)).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(blob=>{
+    if(tAudio!==a)return; tUrl=URL.createObjectURL(blob); a.src=tUrl; return a.play()}).catch(()=>{ if(tAudio===a&&!a.src){toast("Could not play "+t.label);testStop()}});
 }
 async function testAll(){ if(tBusy)return; if(!tKey){await testBuild(false)} if(!tRows.length)return; tPlaylist=true; testPlay(0)}
 async function testBuild(rebuild){
