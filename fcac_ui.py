@@ -563,7 +563,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
-      <button class="primary" id="t-all">&#9654;  Test All</button><span id="t-now"></span>
+      <button class="primary" id="t-all">&#9654;  Test All</button><button class="ghost" id="t-skip" style="display:none;padding:14px 22px">⏭  Skip</button><button class="ghost" id="t-stop" style="display:none;padding:14px 22px">■  Stop</button><span id="t-now"></span>
     </div>
     <div id="t-list" style="margin-top:18px"></div>
   </div>
@@ -968,7 +968,7 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 let view="main", studioSig="", recState=null, openGroups=new Set(["BoardingWelcome"]), playing=null;
 function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
-let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false;
+let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false,tPaused=false;
 function tMsg(t){const L=$("#t-list");L.innerHTML="";L.appendChild(el("div","tmsg",t))}
 async function testInit(){
   if(tOpts)return;
@@ -977,7 +977,9 @@ async function testInit(){
   if(!tOpts.length){tMsg("No packs with a voice in your library yet - record or import one first.");return}
   a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
   $("#t-time").onchange=()=>testBuild(false); $("#t-build").onclick=()=>testBuild(true);
-  $("#t-all").onclick=()=>{ if(tPlaylist){testStop();return} testAll()};
+  $("#t-all").onclick=()=>{ if(tPlaylist&&tAudio){ if(tPaused){tPaused=false;tAudio.play().catch(()=>{})}else{tPaused=true;tAudio.pause()} testMark(); return} testAll()};
+  $("#t-skip").onclick=()=>{ if(tIdx<0||!tRows.length)return; tPlaylist=true; tPaused=false; testPlay(tIdx+1)};
+  $("#t-stop").onclick=testStop;
   testFillVoices();
 }
 function testFillVoices(){const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
@@ -988,14 +990,15 @@ function testFillDest(){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=x.vo
   if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);tMsg("This voice has no airport recordings, so there is nothing to build yet.");return}
   testBuild(false)}
 function testMark(){tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
-  $("#t-all").textContent=tPlaylist?"■  Stop":"▶  Test All";
+  $("#t-all").textContent=tPlaylist?(tPaused?"▶  Resume":"❚❚  Pause"):"▶  Test All";
   $("#t-all").classList.toggle("running",tPlaylist);
-  $("#t-now").textContent=tPlaylist&&tIdx>=0?"Playing "+(tIdx+1)+" of "+tRows.length+": "+tRows[tIdx].label:""}
-function testStop(){tPlaylist=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} tIdx=-1; testMark()}
+  for(const id of ["#t-skip","#t-stop"])$(id).style.display=tIdx>=0?"":"none";
+  $("#t-now").textContent=tIdx>=0?(tPaused?"Paused ":"Playing ")+(tIdx+1)+" of "+tRows.length+": "+tRows[tIdx].label:""}
+function testStop(){tPlaylist=false;tPaused=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} tIdx=-1; testMark()}
 function testPlay(i){ // play one clip; in playlist mode move on to the next when it ends
   if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null}
   if(i<0||i>=tRows.length){const was=tPlaylist;testStop(); if(was)toast("Test finished"); return}
-  tIdx=i; const t=tRows[i];
+  tIdx=i; tPaused=false; const t=tRows[i];
   tAudio=new Audio("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file));
   const a=tAudio; a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
   a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
