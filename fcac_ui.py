@@ -397,7 +397,8 @@ button.danger:hover{border-color:var(--err);color:var(--err)}
 input[type=text]{font:500 14px 'Inter',sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--line2);
        border-radius:11px;padding:10px 13px;width:100%;outline:none}
 input[type=text]:focus{border-color:var(--magenta)}
-.tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint)}
+.tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint);position:relative}
+#t-spoken{position:absolute;left:2px;top:100%;margin-top:4px;white-space:nowrap;color:var(--magenta);font-size:11.5px}
 #t-all{font-size:18px;font-weight:700;padding:16px 44px;border-radius:16px;min-width:230px}
 #t-all.running{background:var(--surface2);border-color:var(--line2);box-shadow:none}
 #t-all:disabled{opacity:.5}
@@ -570,11 +571,11 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   </div>
   <div id="view-test" style="display:none">
     <div class="section-head"><h2>Test your packs</h2><span id="t-sub">Builds the full set of PAs for a flight in a scratch folder, so nothing in the sim changes.</span></div>
-    <div class="card" style="padding:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+    <div class="card" style="padding:16px 16px 30px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
       <label class="tlab">Pack<select class="voice" id="t-air"></select></label>
       <label class="tlab">Voice<select class="voice" id="t-voice"></select></label>
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
-      <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken" style="min-height:14px"></span></label>
+      <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"><span id="t-spoken"></span></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
     </div>
     <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
