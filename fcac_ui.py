@@ -612,7 +612,7 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
   <div class="facts">
     <div><b>1 &middot; Tell FCAC who you are on SimBrief</b><i>Enter your SimBrief username below. FCAC reads your latest flight plan (airline and destination) from SimBrief, and that is what powers everything: it decides which recording to use. It only reads your plan. It never changes anything on SimBrief and sends nothing else anywhere.</i></div>
     <div><b>2 &middot; Get some announcements</b><i>Install an airline pack from the Packs list on the main screen, or record your own in the Pack Studio tab.</i></div>
-    <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. FCAC updates your announcements by itself when you start MSFS, or any time you press Update now.</i></div>
+    <div><b>3 &middot; Plan and fly</b><i>Generate a flight in SimBrief as usual. FCAC updates your announcements by itself when you start MSFS, or any time you press Refresh.</i></div>
   </div>
   <div class="keepopen"><b>Keep FCAC running for the whole flight</b><span>FCAC prepares your announcements as the flight goes on, including building the landing announcement with the real local time once you have landed. If you quit it (or close the window while "quit when I close the window" is on in Settings), those announcements will not be updated. Leave it running in the system tray from before boarding until you have parked.</span></div>
   <label class="small" for="w-name" style="display:block;margin:16px 0 6px;font-weight:600;color:var(--text)">Your SimBrief username (the name you log in with, not the numeric ID)</label>
@@ -771,7 +771,7 @@ function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".p
 
 let heroSig="", keepClosed=false;
 function renderUpd(){const a=snap.app_update,b=$("#updbar");if(!a||!a.url){b.style.display="none";return}
-  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent=(a.notes?a.notes+" - ":"")+"You have "+(snap.version||"an older version")+".";$("#upd-go").textContent=a.auto?"Update now":"Download"}
+  b.style.display="";$("#upd-t").textContent="FCAC "+a.version+" is available";$("#upd-s").textContent="";$("#upd-go").textContent=a.auto?"Update now":"Download"}
 $("#upd-go").onclick=()=>{if(snap.app_update&&snap.app_update.auto){$("#upd-go").disabled=true;toast("Downloading the update - FCAC will restart by itself",6000)}api("open",{what:"update"})};
 function renderKeep(){$("#keep-note").style.display=(keepClosed||snap.hide_reminder)?"none":""}
 $("#keep-x").onclick=async()=>{keepClosed=true;renderKeep();if($("#keep-never").checked)await api("hide_reminder",{hide:true})};
@@ -792,7 +792,7 @@ function renderHero(){
   if(snap.message){const m=el("div","msg"); m.textContent=snap.message; mid.append(m)}
   h.append(mid);
   const side=el("div","side");
-  const b=el("button","primary","Update now"); b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
+  const b=el("button","primary"); b.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:7px"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 12a9 9 0 0 1 15.4-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>Refresh'; b.title="Rebuild this flight's announcements now"; b.disabled=snap.busy||!snap.voices; b.onclick=()=>api("update");
   if(!snap.voices&&f&&f.airline) b.title="No voices for "+f.airline+" yet - install or import its airline pack first";
   const v=snap.voices;
   if(v){
