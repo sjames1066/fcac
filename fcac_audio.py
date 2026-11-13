@@ -126,13 +126,16 @@ def _trim_flow(data: np.ndarray, rate: int, lead_ms: int = 50, tail_ms: int = 11
     win = max(1, int(rate * 0.01))
     env = np.sqrt(np.convolve(mono ** 2, np.ones(win) / win, mode="same"))
     speech = float(np.percentile(env, 95))
-    hold = max(1, int(rate * 0.02))
 
-    def held_at(db: float):
+    def held_at(db: float, hold_ms: int):
+        hold = max(1, int(rate * hold_ms / 1000))
         threshold = max(SILENCE, speech * 10 ** (db / 20))
-        return np.flatnonzero(np.convolve((env > threshold).astype("float32"), np.ones(hold, dtype="float32"), mode="valid") >= hold)
+        return np.flatnonzero(np.convolve((env > threshold).astype("float32"), np.ones(hold, dtype="float32"), mode="valid") >= hold), hold
 
-    starts, ends = held_at(lead_db), held_at(tail_db)
+    # A mic click or pop at the start of a recording is loud but only a few ms long; a word holds its level for far
+    # longer, so the start must stay up for 70 ms (otherwise the click is mistaken for the first word and kept).
+    starts, _ = held_at(lead_db, 70)
+    ends, hold = held_at(tail_db, 20)
     if len(starts) == 0 or len(ends) == 0:
         return data
     first, last = int(starts[0]), int(ends[-1]) + hold
