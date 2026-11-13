@@ -1927,6 +1927,31 @@ class UIMixin:
                                                "version": "imported", "url": str(path), "sha256": "", "size": 0, "cleanup": str(path)})
         return {"ok": True, "icao": icao}
 
+    def library_logo_set(self, icao: str, body: bytes) -> dict:
+        """The logo the user picked on the dashboard: kept as Airlines\\<ICAO>\\logo.png (it wins over any other logo)."""
+        import io
+        from PIL import Image
+        try:
+            folder = airline_folder(load_config(), check_airline_code(icao))
+            if not folder.is_dir():
+                return {"error": "Install or import this pack first."}
+            if not body or len(body) > 5 * 1024 * 1024:
+                return {"error": "That image is empty or too large (5 MB limit)."}
+            try:
+                image = Image.open(io.BytesIO(body))
+                image.load()
+            except Exception:
+                return {"error": "That is not an image FCAC can read. Use a png, jpg or webp."}
+            image = image.convert("RGBA")
+            image.thumbnail((512, 512))
+            for old in ("logo.jpg", "logo.jpeg", "logo.webp"):
+                (folder / old).unlink(missing_ok=True)
+            image.save(folder / "logo.png", "PNG")
+        except (AppError, OSError) as exc:
+            return {"error": str(exc)}
+        self.logo_version += 1
+        return {"ok": True}
+
     def ui_logo(self, icao: str) -> tuple[bytes, str]:
         try:
             return logo_png(load_config(), check_airline_code(icao)), "image/png"
@@ -2563,6 +2588,7 @@ class UIMixin:
                         task.update(text="Removing files", frac=None)
                         message = uninstall_pack(load_config(), icao)
                     self.set_status(message, notify=True)
+                    self.logo_version += 1   # a new pack may have brought its logo: make the window ask for it again
                 except AppError as exc:
                     self.set_status(str(exc), notify=True)
                 except Exception as exc:

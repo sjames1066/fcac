@@ -232,6 +232,15 @@ class UIServer:
                                 left -= len(chunk)
                         self._json(200, server.backend.import_local(dest, q.get("file", [""])[0]))
                         return
+                    if path == "/logo/upload":  # a logo picked on the dashboard for an installed pack
+                        q = parse_qs(parsed.query)
+                        size = int(self.headers.get("Content-Length") or 0)
+                        if size <= 0 or size > 6 * 1024 * 1024:
+                            self.close_connection = True
+                            self._json(413, {"error": "That image is empty or too large (5 MB limit)."})
+                            return
+                        self._json(200, server.backend.library_logo_set(q.get("icao", [""])[0], self.rfile.read(size)))
+                        return
                     if path == "/studio/upload":  # raw audio bytes; details in the query string
                         q = parse_qs(parsed.query)
                         size = int(self.headers.get("Content-Length") or 0)
@@ -407,6 +416,10 @@ input[type=text]:focus{border-color:var(--magenta)}
 .packs{display:grid;grid-template-columns:1fr;gap:12px}
 .pack{padding:16px 20px}
 .pack .top{display:flex;align-items:center;gap:16px}
+.lw{position:relative;display:inline-block;flex:none;line-height:0}
+.lw .ed{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;border-radius:inherit;background:rgba(10,8,20,.62);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;cursor:pointer}
+.lw:hover .ed,.lw .ed:focus-visible{opacity:1}
+.pack .lw{border-radius:14px}.hero .lw{border-radius:16px}
 .pack .logo{width:56px;height:56px;border-radius:14px;flex:none;object-fit:cover;background:var(--surface2)}
 .pack .name{font-weight:600;font-size:15px;letter-spacing:-.01em}
 .pack .meta{color:var(--muted);font-size:12.5px}
@@ -739,6 +752,15 @@ function confirmDiscard(p){
   $("#ab-ok").onclick=async()=>{$("#m-abandon").classList.remove("show");const r=await studio("discard",{icao:p.icao,voice:p.voice});if(r.ok)toast("Pack discarded")};
 }
 function toast(t,ms){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),ms||3200)}
+function editableLogo(icao,cls){ // the logo with a pencil that appears on hover: pick a new image for this airline
+  const w=el("span","lw"); w.append(logo(icao,cls));
+  const b=el("button","ed"); b.title="Change this logo"; b.type="button";
+  b.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+  const f=el("input"); f.type="file"; f.accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"; f.style.display="none";
+  f.onchange=async()=>{const file=f.files[0]; if(!file)return; if(file.size>5*1024*1024){toast("That image is too large (5 MB limit)");return}
+    try{const r=await fetch("/logo/upload?"+new URLSearchParams({icao:icao,t:TOKEN}),{method:"POST",headers:{"X-Token":TOKEN},body:file});const j=await r.json();
+      toast(j.error||"Logo changed",j.error?6000:3000); if(j.ok)await refreshNow()}catch(e){toast("Upload failed",6000)}};
+  b.onclick=e=>{e.stopPropagation();f.click()}; w.append(b,f); return w}
 function logo(icao,cls){const i=el("img",cls);i.alt=icao;i.src="/logo/"+icao+".png?t="+TOKEN+"&v="+(snap&&snap.logo_v||0);return i}
 
 let heroSig="", keepClosed=false;
@@ -752,7 +774,7 @@ function renderHero(){
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
-  if(f&&f.airline){h.append(logo(f.airline,"logo"))}
+  if(f&&f.airline){h.append(editableLogo(f.airline,"logo"))}
   const mid=el("div"); mid.style.minWidth="0";
   if(f&&f.dest){
     const ids=[f.number,f.callsign].filter(Boolean).join(" / ");
@@ -793,7 +815,7 @@ function renderHero(){
 
 function packCard(p){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
-  const top=el("div","top"); top.append(logo(p.icao,"logo"));
+  const top=el("div","top"); top.append(p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
   else if(p.catalog&&p.installed){n.append(el("span","chip ok","Installed"))}
