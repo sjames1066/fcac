@@ -389,6 +389,12 @@ input[type=text]{font:500 14px 'Inter',sans-serif;color:var(--text);background:v
        border-radius:11px;padding:10px 13px;width:100%;outline:none}
 input[type=text]:focus{border-color:var(--magenta)}
 .tlab{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--faint)}
+#t-all{font-size:18px;font-weight:700;padding:16px 44px;border-radius:16px;min-width:230px}
+#t-all.running{background:var(--surface2);border-color:var(--line2);box-shadow:none}
+#t-all:disabled{opacity:.5}
+#t-now{color:var(--text);font-size:14px}
+.tmsg{padding:18px 4px;color:var(--faint);font-size:14px}
+.trow.now{background:rgba(206,58,128,.14)}.trow.now .tn{font-weight:600}
 .trow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line)}
 .trow:last-child{border-bottom:0}
 .trow button{width:34px;height:34px;border-radius:50%;padding:0}
@@ -555,6 +561,9 @@ textarea.sc-edit{width:100%;box-sizing:border-box;resize:none;overflow:hidden;fo
       <label class="tlab">Destination<select class="voice" id="t-dest"></select></label>
       <label class="tlab">Local arrival time<input type="text" id="t-time" value="14:35" style="width:90px"></label>
       <button class="ghost" id="t-build">Rebuild (re-roll variations)</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;margin-top:16px">
+      <button class="primary" id="t-all">&#9654;  Test All</button><span id="t-now"></span>
     </div>
     <div id="t-list" style="margin-top:18px"></div>
   </div>
@@ -959,34 +968,55 @@ document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>api("open",{wh
 let view="main", studioSig="", recState=null, openGroups=new Set(["BoardingWelcome"]), playing=null;
 function setView(v){view=v;for(const n of ["main","studio","dl","test"]){$("#view-"+n).style.display=v===n?"":"none";$("#tab-"+n).classList.toggle("on",v===n)}
   if(v==="studio"){studioSig="";renderStudio()} if(v==="test")testInit()}
-let tOpts=null,tKey="",tAudio=null,tPlaying=null;
+let tOpts=null,tKey="",tAudio=null,tRows=[],tIdx=-1,tPlaylist=false,tBusy=false;
+function tMsg(t){const L=$("#t-list");L.innerHTML="";L.appendChild(el("div","tmsg",t))}
 async function testInit(){
-  if(!tOpts){const r=await api("test_options"); if(!r.ok)return; tOpts=r.airlines;
-    const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
-    if(!tOpts.length){$("#t-list").textContent="No packs with a voice in your library yet.";return}
-    a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
-    $("#t-time").onchange=()=>testBuild(false); $("#t-build").onclick=()=>testBuild(true); testFillVoices()}
+  if(tOpts)return;
+  const r=await api("test_options"); if(!r.ok){tMsg(r.error||"Could not read your library.");return} tOpts=r.airlines;
+  const a=$("#t-air"); a.innerHTML=""; for(const x of tOpts){const o=el("option",null,x.icao+" - "+x.name);o.value=x.icao;a.appendChild(o)}
+  if(!tOpts.length){tMsg("No packs with a voice in your library yet - record or import one first.");return}
+  a.onchange=testFillVoices; $("#t-voice").onchange=testFillDest; $("#t-dest").onchange=()=>testBuild(false);
+  $("#t-time").onchange=()=>testBuild(false); $("#t-build").onclick=()=>testBuild(true);
+  $("#t-all").onclick=()=>{ if(tPlaylist){testStop();return} testAll()};
+  testFillVoices();
 }
 function testFillVoices(){const x=tOpts.find(a=>a.icao===$("#t-air").value),v=$("#t-voice"); v.innerHTML="";
   for(const y of x.voices){const o=el("option",null,y.name);o.value=y.key;v.appendChild(o)} testFillDest()}
 function testFillDest(){const x=tOpts.find(a=>a.icao===$("#t-air").value),y=x.voices.find(v=>v.key===$("#t-voice").value),d=$("#t-dest"); d.innerHTML="";
+  testStop(); tKey=""; tRows=[];
   for(const p of y.airports){const o=el("option",null,p);o.value=p;d.appendChild(o)}
-  if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);$("#t-list").textContent="This voice has no airport recordings, so there is nothing to build yet.";return}
+  if(!y.airports.length){const o=el("option",null,"(no airports recorded)");o.value="";d.appendChild(o);tMsg("This voice has no airport recordings, so there is nothing to build yet.");return}
   testBuild(false)}
-function testStop(){if(tAudio){tAudio.pause();tAudio=null} if(tPlaying){tPlaying.textContent="\u25B6";tPlaying=null}}
+function testMark(){tRows.forEach((r,i)=>{r.row.classList.toggle("now",i===tIdx);r.btn.textContent=(i===tIdx&&tAudio)?"■":"▶"});
+  $("#t-all").textContent=tPlaylist?"■  Stop":"▶  Test All";
+  $("#t-all").classList.toggle("running",tPlaylist);
+  $("#t-now").textContent=tPlaylist&&tIdx>=0?"Playing "+(tIdx+1)+" of "+tRows.length+": "+tRows[tIdx].label:""}
+function testStop(){tPlaylist=false; if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null} tIdx=-1; testMark()}
+function testPlay(i){ // play one clip; in playlist mode move on to the next when it ends
+  if(tAudio){tAudio.onended=null;tAudio.pause();tAudio=null}
+  if(i<0||i>=tRows.length){const was=tPlaylist;testStop(); if(was)toast("Test finished"); return}
+  tIdx=i; const t=tRows[i];
+  tAudio=new Audio("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file));
+  const a=tAudio; a.onended=()=>{ if(tAudio!==a)return; if(tPlaylist) testPlay(i+1); else testStop()};
+  a.onerror=()=>{ if(tAudio!==a)return; toast("Could not play "+t.label); if(tPlaylist) testPlay(i+1); else testStop()};
+  a.play().catch(()=>{}); testMark(); t.row.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+async function testAll(){ if(tBusy)return; if(!tKey){await testBuild(false)} if(!tRows.length)return; tPlaylist=true; testPlay(0)}
 async function testBuild(rebuild){
-  testStop(); const L=$("#t-list"); L.textContent="Building..."; 
+  if(tBusy)return; tBusy=true; testStop(); tMsg("Building your announcements..."); $("#t-all").disabled=true;
   const r=await api("test_build",{icao:$("#t-air").value,voice:$("#t-voice").value,dest:$("#t-dest").value,arrival:$("#t-time").value,rebuild:rebuild});
-  if(!r.ok){L.textContent=r.error||"Could not build.";return}
-  tKey=r.key; L.innerHTML=""; const groups={};
+  tBusy=false; $("#t-all").disabled=false;
+  if(!r.ok){tKey="";tRows=[];tMsg(r.error||"Could not build - FCAC did not answer.");return}
+  tKey=r.key; tRows=[]; const L=$("#t-list"); L.innerHTML=""; const groups={};
   for(const t of r.triggers)(groups[t.group]=groups[t.group]||[]).push(t);
   for(const g of ["Welcome aboard","Landing","Other announcements"]){ if(!groups[g])continue;
     L.appendChild(el("div","section-head")).appendChild(el("h2",null,g));
-    const c=el("div","card"); for(const t of groups[g]){const row=el("div","trow"),b=el("button","ghost","\u25B6");
-      b.onclick=()=>{ if(tPlaying===b){testStop();return} testStop(); tAudio=new Audio("/test/audio?t="+TOKEN+"&key="+tKey+"&file="+encodeURIComponent(t.file));
-        tPlaying=b;b.textContent="\u25A0"; tAudio.onended=testStop; tAudio.play().catch(()=>{toast("Could not play that clip");testStop()})};
+    const c=el("div","card"); for(const t of groups[g]){const row=el("div","trow"),b=el("button","ghost","▶");
+      const item={file:t.file,label:t.label,row:row,btn:b}; const idx=tRows.length; tRows.push(item);
+      b.onclick=()=>{ if(tIdx===idx&&tAudio){testStop();return} tPlaylist=false; testPlay(idx)};
       row.append(b,el("span","tn",t.label),el("span","tf",t.file)); c.appendChild(row)}
     L.appendChild(c)}
+  testMark();
 }
 $("#tab-main").onclick=()=>setView("main"); $("#tab-studio").onclick=()=>setView("studio"); $("#tab-dl").onclick=()=>setView("dl"); $("#tab-test").onclick=()=>setView("test");
 

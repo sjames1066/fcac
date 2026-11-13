@@ -1937,6 +1937,13 @@ class UIMixin:
     TEST_LABELS = {stem: label for stem, label, _ in fcac_studio.GENERAL}
 
     def test_options(self) -> dict:
+        try:
+            return self._test_options()
+        except Exception as exc:
+            log.exception("Test options failed")
+            return {"error": f"Could not read your library: {type(exc).__name__}: {exc}", "airlines": []}
+
+    def _test_options(self) -> dict:
         """Every airline in your library that has a voice: its voices and the airports recorded for them."""
         cfg = load_config()
         root = airlines_root(cfg)
@@ -1990,6 +1997,10 @@ class UIMixin:
             except AppError as exc:
                 shutil.rmtree(sandbox, ignore_errors=True)
                 return {"error": str(exc)}
+            except Exception as exc:   # show what went wrong in the Test tab instead of a bare "internal error"
+                log.exception("Test build failed")
+                shutil.rmtree(sandbox, ignore_errors=True)
+                return {"error": f"Test build failed: {type(exc).__name__}: {exc}"}
             finally:
                 _STATE_LOCAL.path = None
             TEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -2176,7 +2187,8 @@ class UIMixin:
         elif name == "open":
             self._open_folder(str(data.get("what", "")))
         elif name == "test_options":
-            return {"ok": True, **self.test_options()}
+            r = self.test_options()
+            return r if r.get("error") else {"ok": True, **r}
         elif name == "test_build":
             return self.test_build(data)
         elif name == "check_update":   # re-read catalog.json now: the newest FCAC and the pack list
