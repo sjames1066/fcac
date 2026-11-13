@@ -784,11 +784,12 @@ function renderHero(){
   if(sig===heroSig) return; heroSig=sig;
   const h=$("#hero"); h.replaceChildren(); h.classList.toggle("ok",!!snap.applied);
   const f=snap.flight;
-  const noPack=!(snap.packs||[]).some(p=>p.installed);
+  const anyPack=(snap.packs||[]).some(p=>p.installed);
+  const noPack=!anyPack||!!(f&&f.airline&&!snap.voices);   // no pack at all, or none for this flight's airline
   if(f&&f.airline&&!noPack){h.append(editableLogo(f.airline,"logo"))}
   const mid=el("div"); mid.style.minWidth="0";
   if(noPack){
-    const t=el("div","h-nopack"); t.append(document.createTextNode("No airline pack installed. Please download or import one "));
+    const t=el("div","h-nopack"); t.append(document.createTextNode(anyPack&&f&&f.airline?"No "+f.airline+" airline pack installed. Please download or import one ":"No airline pack installed. Please download or import one "));
     const a=el("a",null,"here"); a.href="#"; a.onclick=e=>{e.preventDefault();setView("dl")}; t.append(a,document.createTextNode("."));
     mid.append(t);
   }else if(f&&f.dest){
