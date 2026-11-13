@@ -828,9 +828,9 @@ function renderHero(){
   h.append(side);
 }
 
-function packCard(p){
+function packCard(p,editable){
   const c=el("div","card pack"); c.id="pack-"+(p.key||p.icao);
-  const top=el("div","top"); top.append(p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
+  const top=el("div","top"); top.append(editable&&p.installed?editableLogo(p.icao,"logo"):logo(p.icao,"logo"));
   const info=el("div"); const n=el("div","name",p.name);
   if(p.installed&&p.update){n.append(el("span","chip up","Update available"))}
   else if(p.catalog&&p.installed){n.append(el("span","chip ok","Installed"))}
@@ -860,7 +860,7 @@ function renderPackList(boxId,list,emptyText){
   if(sig!==packSigs[boxId]){
     packSigs[boxId]=sig; box.replaceChildren();
     if(!list.length){const e=el("div","empty",emptyText); e.style.gridColumn="1/-1"; box.append(e)}
-    list.forEach(p=>box.append(packCard(p)));
+    list.forEach(p=>box.append(packCard(p,boxId==='packs')));   // only the Dashboard list lets you change a logo
   }
   list.forEach(p=>{
     if(!p.task) return;
