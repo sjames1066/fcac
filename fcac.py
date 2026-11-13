@@ -1975,8 +1975,11 @@ class UIMixin:
             if not re.fullmatch(r"[A-Z0-9]{3,4}", dest):
                 return {"error": "Choose a destination airport."}
             arrival = str(data.get("arrival", "")).strip() or None
-            if arrival and not re.fullmatch(r"\d{1,2}:\d{2}", arrival):
-                return {"error": "Local time must look like 14:35."}
+            if arrival:   # 14:35, 14.35, 1435 or 935 (24-hour clock)
+                m = re.fullmatch(r"(\d{1,2})[:.]?(\d{2})", arrival)
+                if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+                    return {"error": "Local time must be a 24-hour time like 1435 or 14:35."}
+                arrival = f"{int(m.group(1))}:{m.group(2)}"
             cfg = load_config()
             voices = list_voices(airline_folder(cfg, icao))
             voice = str(data.get("voice", ""))
