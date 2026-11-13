@@ -1,8 +1,10 @@
 {
   "app": {
-    "version": "1.0.3",
+    "version": "1.0.7",
     "url": "https://github.com/sjames1066/fcac",
-    "notes": "Paste a list of airports in Pack Studio; installer and folder build"
+    "notes": "Paste a list of airports in Pack Studio; installer and folder build",
+    "installer": "https://github.com/sjames1066/fcac/releases/download/v1.0.7/FCAC-Setup-1.0.7.exe",
+    "sha256": "a0d34cb185650d3325326b4ee2652904bafaf42dee7debe4c0feb73cd94fe97d"
   },
   "packs": [
     {
