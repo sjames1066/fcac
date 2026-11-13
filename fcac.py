@@ -1329,6 +1329,8 @@ def apply_destination(cfg: dict, airline: str, dest_icao: str, choose=None, vari
         pristine = generic_source(cfg, airline, fenix_dir)
     else:
         pristine = lib_dir / MAIN_FOLDER  # SHT's pack is built from BAW's general PAs
+    if not pristine and target_dir and has_ogg(voice_dir / MAIN_FOLDER):
+        pristine = voice_dir / MAIN_FOLDER   # Test tab: a voice with its own full set of PAs needs no installed Fenix pack
     if not pristine:
         # Never create an empty/partial pack: Fenix would pick it over its default pack and lose announcements.
         extra = f" Created {lib_dir} for your recordings." if created else ""
